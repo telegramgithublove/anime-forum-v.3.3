@@ -4,10 +4,11 @@ import { database } from '../../plugins/firebase';
 
 const state = {
   profile: {
+    userId: null,
     username: '',
     avatarUrl: '',
     signature: '',
-    role: 'New User', // Добавляем поле role с начальным значением
+    role: 'New User',
     settings: {
       profileVisibility: true,
       notifyMessages: true,
@@ -20,12 +21,12 @@ const state = {
     subscriptions: [''],
     exit: { lastLogout: null },
   },
-  profilesCache: {}, // Добавляем кэш для хранения профилей других пользователей
+  profilesCache: {},
 };
 
 const mutations = {
   SET_PROFILE(state, profile) {
-    state.profile = profile;
+    state.profile = { ...profile, userId: profile.userId || state.profile.userId };
   },
   UPDATE_PROFILE(state, profileData) {
     state.profile = { ...state.profile, ...profileData };
@@ -39,16 +40,17 @@ const mutations = {
   UPDATE_SIGNATURE(state, signature) {
     state.profile.signature = signature;
   },
-  UPDATE_ROLE(state, role) { // Добавляем мутацию для роли
+  UPDATE_ROLE(state, role) {
     state.profile.role = role;
   },
-  SET_PROFILE_CACHE(state, { userId, profile }) { // Мутация для кэширования профиля
-    state.profilesCache[userId] = profile;
+  SET_PROFILE_CACHE(state, { userId, profile }) {
+    console.log(`Кэширование профиля для userId: ${userId}`, profile);
+    state.profilesCache[userId] = { ...profile, userId };
   },
 };
 
 const actions = {
-  async fetchProfile({ commit, state }, userId) {
+  async fetchProfile({ commit, dispatch, rootGetters }, userId) {
     try {
       const response = await axios.get(
         `https://forum-a36e8-default-rtdb.asia-southeast1.firebasedatabase.app/users/${userId}/profile.json`
@@ -61,13 +63,22 @@ const actions = {
             'http://95.164.90.115:3000'
           );
         }
-        // Если это профиль текущего пользователя, обновляем state.profile
-        if (userId === state.profile.userId || !state.profile.userId) {
-          commit('SET_PROFILE', response.data);
+        const profileData = { ...response.data, userId };
+        const currentUserId = rootGetters['auth/getUserId'];
+
+        // Обновляем auth только если это профиль текущего пользователя
+        if (userId === currentUserId) {
+          commit('SET_PROFILE', profileData);
+          if (profileData.username && profileData.username !== rootGetters['auth/getUsername']) {
+            await dispatch('auth/updateUserUsername', profileData.username, { root: true });
+          }
+          if (profileData.avatarUrl && profileData.avatarUrl !== rootGetters['auth/getUserAvatar']) {
+            await dispatch('auth/updateUserAvatar', profileData.avatarUrl, { root: true });
+          }
         }
-        // Кэшируем профиль для любого пользователя
-        commit('SET_PROFILE_CACHE', { userId, profile: response.data });
-        return response.data;
+        // Всегда кэшируем профиль, независимо от того, текущий это пользователь или нет
+        commit('SET_PROFILE_CACHE', { userId, profile: profileData });
+        return profileData;
       }
     } catch (error) {
       console.error('Ошибка при получении профиля:', error);
@@ -75,19 +86,12 @@ const actions = {
     }
   },
 
-  async updateUsername({ commit, state }, { userId, username }) {
+  async updateUsername({ dispatch }, { userId, username }) {
     try {
       if (!username.trim()) {
         throw new Error('Имя пользователя не может быть пустым');
       }
-
-      const userRef = databaseRef(database, `users/${userId}/profile`);
-      await set(userRef, {
-        ...state.profile,
-        username: username
-      });
-
-      commit('UPDATE_USERNAME', username);
+      await dispatch('auth/updateUserUsername', username, { root: true });
       return { success: true };
     } catch (error) {
       console.error('Ошибка при обновлении имени пользователя:', error);
@@ -154,14 +158,10 @@ const actions = {
       if (uploadResponse.data && uploadResponse.data.fileUrl) {
         console.log('Получен URL изображения:', uploadResponse.data.fileUrl);
         
-        const userRef = databaseRef(database, `users/${userId}/profile`);
-        await set(userRef, {
-          ...state.profile,
-          avatarUrl: uploadResponse.data.fileUrl
-        });
-
+        await dispatch('auth/updateUserAvatar', uploadResponse.data.fileUrl, { root: true });
         localStorage.setItem('userAvatarUrl', uploadResponse.data.fileUrl);
         commit('UPDATE_AVATAR', uploadResponse.data.fileUrl);
+        commit('SET_PROFILE_CACHE', { userId, profile: { ...state.profile, avatarUrl: uploadResponse.data.fileUrl, userId } });
         
         return {
           success: true,
@@ -182,6 +182,7 @@ const actions = {
       await set(signatureRef, signature);
   
       commit('UPDATE_SIGNATURE', signature);
+      commit('SET_PROFILE_CACHE', { userId, profile: { ...state.profilesCache[userId], signature, userId } });
       console.log('Подпись успешно обновлена:', signature);
     } catch (error) {
       console.error('Ошибка при обновлении подписи:', error.message);
@@ -198,14 +199,13 @@ const actions = {
 
       if (response.data) {
         commit('UPDATE_PROFILE', profileData);
-        
         if (profileData.username) {
           await dispatch('auth/updateUserUsername', profileData.username, { root: true });
         }
         if (profileData.avatarUrl) {
           await dispatch('auth/updateUserAvatar', profileData.avatarUrl, { root: true });
         }
-
+        commit('SET_PROFILE_CACHE', { userId, profile: { ...state.profile, ...profileData, userId } });
         return response.data;
       } else {
         throw new Error('Ошибка при обновлении профиля');
@@ -216,18 +216,12 @@ const actions = {
     }
   },
 
-  async updateRole({ commit, state }, { userId, role }) { // Действие для обновления роли
+  async updateRole({ commit }, { userId, role }) {
     try {
       const userRef = databaseRef(database, `users/${userId}/profile`);
-      const updatedProfile = {
-        ...state.profile,
-        role: role
-      };
+      const updatedProfile = { ...state.profile, role, userId };
       await set(userRef, updatedProfile);
-      // Обновляем только если это профиль текущего пользователя
-      if (userId === state.profile.userId || !state.profile.userId) {
-        commit('UPDATE_ROLE', role);
-      }
+      commit('UPDATE_ROLE', role);
       commit('SET_PROFILE_CACHE', { userId, profile: updatedProfile });
       console.log('progress.js: Роль обновлена на:', role);
     } catch (error) {
@@ -239,32 +233,17 @@ const actions = {
 
 const getters = {
   getProfile: state => state.profile,
-  userAvatar: state => {
-    if (!state.profile.avatarUrl) return '/image/empty_avatar.png';
-    const baseUrl = 'http://95.164.90.115:3000';
-    if (state.profile.avatarUrl.startsWith('http')) {
-      return state.profile.avatarUrl.replace('http://localhost:3000', baseUrl);
-    }
-    return `${baseUrl}${state.profile.avatarUrl}`;
-  },
+  userAvatar: state => state.profile.avatarUrl || '/image/empty_avatar.png',
   username: state => state.profile.username || '',
   signature: state => state.profile.signature || '',
-  getAvatarUrl: state => {
-    if (!state.profile.avatarUrl) return '/image/empty_avatar.png';
-    const baseUrl = 'http://95.164.90.115:3000';
-    if (state.profile.avatarUrl.startsWith('http')) {
-      return state.profile.avatarUrl.replace('http://localhost:3000', baseUrl);
-    }
-    return `${baseUrl}${state.profile.avatarUrl}`;
-  },
+  getAvatarUrl: state => state.profile.avatarUrl || '/image/empty_avatar.png',
   getSignature: state => state.profile.signature,
-  getRole: state => state.profile.role || 'New User', // Геттер для роли текущего пользователя
-  getProfileByUserId: state => userId => { // Новый геттер для получения профиля по userId
-    return state.profilesCache[userId] || {
-      username: 'Гость',
-      avatarUrl: '/image/empty_avatar.png',
-      role: 'New User'
-    };
+  getRole: state => state.profile.role || 'New User',
+  getProfileByUserId: state => userId => state.profilesCache[userId] || {
+    username: 'Гость',
+    avatarUrl: '/image/empty_avatar.png',
+    role: 'New User',
+    userId
   },
 };
 

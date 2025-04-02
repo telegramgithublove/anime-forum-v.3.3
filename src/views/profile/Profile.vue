@@ -8,11 +8,9 @@
         </div>
       </header>
 
-      <!-- Основная информация -->
       <section class="mb-8">
         <h2 class="text-2xl font-semibold mb-4 text-blue-600">Основная информация</h2>
         <div class="space-y-4">
-          <!-- Имя пользователя -->
           <div class="relative">
             <label class="block text-gray-700 font-medium mb-2">Имя пользователя</label>
             <input
@@ -27,7 +25,6 @@
             <p v-if="usernameError" class="absolute bottom-1 mb-4 right-2 text-red-500 text-sm">{{ usernameError }}</p>
           </div>
 
-          <!-- Аватар -->
           <div>
             <label class="block text-gray-700 font-medium mb-2">Аватар</label>
             <div class="flex items-center space-x-6">
@@ -61,7 +58,6 @@
             </div>
           </div>
 
-          <!-- Прогресс -->
           <div class="max-w-4xl mx-auto p-6">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6">Профиль пользователя</h1>
             <div class="mb-6">
@@ -71,10 +67,9 @@
                 Создано тем: {{ createdPosts }} / {{ totalPosts }}
               </p>
             </div>
-           <TestProgress /> --> 
+            <TestProgress />
           </div>
 
-          <!-- Кнопки -->
           <div class="mt-6 flex justify-end space-x-4">
             <router-link
               to="/"
@@ -86,7 +81,6 @@
         </div>
       </section>
 
-      <!-- Модальное окно с поздравлением -->
       <div
         v-if="showCelebration"
         class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50"
@@ -133,7 +127,6 @@ const router = useRouter();
 const store = useStore();
 const toast = useToast();
 
-// Debounce функция
 function debounce(func, wait) {
   let timeout;
   return function (...args) {
@@ -143,36 +136,28 @@ function debounce(func, wait) {
   };
 }
 
-// Реактивные данные из Vuex
+const currentUserId = computed(() => store.getters['auth/getUserId']);
 const username = computed({
-  get: () => store.getters['profile/username'],
-  set: (value) => store.commit('profile/UPDATE_USERNAME', value),
+  get: () => store.getters['auth/getUsername'],
+  set: (value) => store.commit('auth/UPDATE_USERNAME', value, { root: true }),
 });
-
-const avatarUrl = computed(() => {
-  const avatar = store.getters['profile/userAvatar'];
-  return !avatar || avatar === '' ? '/image/empty_avatar.png' : avatar;
-});
-
+const avatarUrl = computed(() => store.getters['auth/getUserAvatar']);
 const createdPosts = computed(() => store.getters['progress/getCreatedPosts']);
 const totalPosts = computed(() => store.state.progress.totalPosts);
 const milestones = computed(() => store.getters['progress/getMilestones']);
 
-// Локальное состояние
 const usernameError = ref('');
 const showCelebration = ref(false);
 const newMilestone = ref(null);
 
-// Обработчики
 const handleAvatarError = (e) => {
   e.target.src = '/image/empty_avatar.png';
 };
 
 const updateUsernameDebounced = debounce(async function () {
   try {
-    const userId = store.getters['auth/getUserId'];
+    const userId = currentUserId.value;
     if (!userId) throw new Error('Пользователь не авторизован');
-
     await store.dispatch('profile/updateUsername', { userId, username: username.value });
     toast.success('Имя пользователя успешно обновлено');
     usernameError.value = '';
@@ -187,7 +172,7 @@ const handleAvatarChange = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    const userId = store.getters['auth/getUserId'];
+    const userId = currentUserId.value;
     if (!userId) throw new Error('Пользователь не авторизован');
 
     await store.dispatch('profile/updateAvatar', { userId, avatarFile: file });
@@ -197,14 +182,12 @@ const handleAvatarChange = async (event) => {
   }
 };
 
-// Закрытие поздравления и обновление последней роли
 const closeCelebration = () => {
   showCelebration.value = false;
   localStorage.setItem('lastSeenRole', newMilestone.value.name);
   newMilestone.value = null;
 };
 
-// Проверка новой роли и отображение поздравления
 const checkForNewMilestone = () => {
   const currentPosts = createdPosts.value;
   const currentMilestone = milestones.value.find(
@@ -228,14 +211,17 @@ const triggerConfetti = () => {
   });
 };
 
-// При монтировании компонента
 onMounted(async () => {
   try {
-    const userId = store.getters['auth/getUserId'];
+    const userId = currentUserId.value;
     if (userId) {
+      console.log('Загрузка профиля для userId:', userId);
       await store.dispatch('profile/fetchProfile', userId);
       await store.dispatch('progress/initializeProgress');
       checkForNewMilestone();
+    } else {
+      console.error('Нет userId для загрузки профиля');
+      toast.error('Пользователь не авторизован');
     }
   } catch (error) {
     console.error('Ошибка загрузки профиля:', error);

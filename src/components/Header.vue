@@ -2,7 +2,6 @@
   <div>
     <header class="bg-gradient-to-br from-purple-600 via-purple-500 to-blue-500 text-white shadow-xl p-4">
       <div class="flex justify-between items-center max-w-7xl mx-auto">
-        <!-- Навигация слева -->
         <nav class="flex items-center space-x-4">
           <div class="ml-4">
             <router-link
@@ -15,7 +14,6 @@
           </div>
         </nav>
 
-        <!-- Логотип, название и поиск по центру -->
         <div class="flex items-center space-x-6">
           <img src="/image/logo.png" alt="Logo" class="w-14 h-14 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200" />
           <h1 class="text-2xl font-bold tracking-wide whitespace-nowrap text-white/90 font-serif">Anime Lights Forum</h1>
@@ -32,7 +30,6 @@
           </div>
         </div>
 
-        <!-- Профиль и переключатель темы справа -->
         <div class="flex items-center space-x-6">
           <span
             @click="toggleDarkMode"
@@ -41,7 +38,6 @@
             {{ isDarkMode ? 'dark_mode' : 'light_mode' }}
           </span>
 
-          <!-- Профиль пользователя -->
           <div class="relative">
             <button
               ref="profileButtonRef"
@@ -157,7 +153,6 @@
       </div>
     </header>
 
-    <!-- Спиннер загрузки -->
     <div v-if="isLoading" class="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
       <div class="bg-white/10 p-4 rounded-full">
         <svg class="animate-spin h-10 w-10 text-purple-500" viewBox="0 0 24 24">
@@ -181,20 +176,17 @@ const showProfileMenu = ref(false);
 const profileButtonRef = ref(null);
 const profileMenuRef = ref(null);
 
-// Computed properties
 const isSuperUser = computed(() => store.getters['auth/isSuperUser']);
 const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
 const isEmailVerified = computed(() => store.getters['auth/isEmailVerified']);
-const userAvatar = computed(() => store.getters['auth/getUserAvatar'] || '/image/empty_avatar.png');
-const username = computed(() => store.getters['auth/getUsername'] || 'Гость');
+const userAvatar = computed(() => store.getters['auth/getUserAvatar']);
+const username = computed(() => store.getters['auth/getUsername']);
 const isDarkMode = ref(false);
 
-// Обработчик ошибки загрузки аватара
 const handleAvatarError = (e) => {
   e.target.src = '/image/empty_avatar.png';
 };
 
-// Обработчик клика вне меню
 const handleClickOutside = (event) => {
   if (profileMenuRef.value && profileButtonRef.value) {
     if (!profileMenuRef.value.contains(event.target) && 
@@ -205,7 +197,6 @@ const handleClickOutside = (event) => {
 };
 
 onMounted(() => {
-  // Инициализация состояния аутентификации только один раз при загрузке приложения
   if (!store.state.auth.authUnsubscribe) {
     store.dispatch('auth/initAuth').catch(error => {
       console.error('Error initializing auth:', error);
@@ -218,7 +209,6 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
 });
 
-// Функция для показа сообщения о необходимости верификации
 const showVerificationMessage = () => {
   alert('Для доступа к этой функции необходимо подтвердить email адрес. Пожалуйста, проверьте вашу почту, включая папку спам.');
 };

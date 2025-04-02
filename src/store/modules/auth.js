@@ -48,7 +48,6 @@ const actions = {
         throw new Error('Пароли не совпадают');
       }
 
-      // Проверка уникальности username и email
       const usersRef = databaseRef(database, 'users');
       const snapshot = await get(usersRef);
       if (snapshot.exists()) {
@@ -73,7 +72,7 @@ const actions = {
         signature: 'New User'
       };
       const userDataForDB = {
-        uid: user.uid, // Добавляем uid для явной идентификации
+        uid: user.uid,
         email: userData.email,
         role: 'user',
         profile: userProfile,
@@ -120,7 +119,6 @@ const actions = {
       const snapshot = await get(userRef);
       const userData = snapshot.exists() ? snapshot.val() : {};
 
-      // Проверка на суперпользователя через базу данных
       if (userData.role === 'superuser') {
         console.log('auth.js: Обнаружен вход суперпользователя');
       }
@@ -304,10 +302,41 @@ const actions = {
     }
   },
 
-  // Новая мутация для очистки кэша
   clearUsersCache({ commit }) {
     console.log('auth.js: Очистка кэша пользователей');
     commit('CLEAR_USERS_CACHE');
+  },
+
+  // Новое действие для обновления username
+  async updateUserUsername({ commit, state }, username) {
+    console.log('auth.js: Вызов действия updateUserUsername с username:', username);
+    try {
+      if (!state.user) throw new Error('Пользователь не авторизован');
+      const userId = state.user.uid;
+      const userRef = databaseRef(database, `users/${userId}/profile/username`);
+      await set(userRef, username);
+      commit('UPDATE_USERNAME', username);
+      console.log('auth.js: Username обновлен:', username);
+    } catch (error) {
+      console.error('auth.js: Ошибка при обновлении username:', error);
+      throw error;
+    }
+  },
+
+  // Новое действие для обновления avatarUrl
+  async updateUserAvatar({ commit, state }, avatarUrl) {
+    console.log('auth.js: Вызов действия updateUserAvatar с avatarUrl:', avatarUrl);
+    try {
+      if (!state.user) throw new Error('Пользователь не авторизован');
+      const userId = state.user.uid;
+      const userRef = databaseRef(database, `users/${userId}/profile/avatarUrl`);
+      await set(userRef, avatarUrl);
+      commit('UPDATE_AVATAR', avatarUrl);
+      console.log('auth.js: Avatar обновлен:', avatarUrl);
+    } catch (error) {
+      console.error('auth.js: Ошибка при обновлении avatarUrl:', error);
+      throw error;
+    }
   }
 };
 
@@ -336,6 +365,18 @@ const mutations = {
   CLEAR_USERS_CACHE(state) {
     console.log('auth.js: Мутация CLEAR_USERS_CACHE');
     state.users = {};
+  },
+  UPDATE_USERNAME(state, username) {
+    console.log('auth.js: Мутация UPDATE_USERNAME:', username);
+    if (state.user && state.user.profile) {
+      state.user.profile.username = username;
+    }
+  },
+  UPDATE_AVATAR(state, avatarUrl) {
+    console.log('auth.js: Мутация UPDATE_AVATAR:', avatarUrl);
+    if (state.user && state.user.profile) {
+      state.user.profile.avatarUrl = avatarUrl;
+    }
   }
 };
 

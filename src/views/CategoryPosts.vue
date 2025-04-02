@@ -170,22 +170,30 @@ onMounted(async () => {
           const postsArray = await Promise.all(Object.entries(postsData).map(async ([id, post]) => {
             console.log('[CategoryPosts] Post:', { id, post });
 
-            let authorName = post.authorName || 'Гость'; // Запасное значение из поста
+            // Используем данные из поста как приоритетные
+            let authorName = post.authorName || 'Гость';
             let authorAvatar = post.authorAvatar || '/image/empty_avatar.png';
             let authorRole = 'New User';
 
             if (post.authorId) {
               try {
-                // Принудительно обновляем профиль для актуальности данных
-                console.log('[CategoryPosts] Fetching profile for authorId:', post.authorId);
-                await store.dispatch('profile/fetchProfile', post.authorId);
+                // Проверяем кэш профиля
                 let authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
-                console.log('[CategoryPosts] Profile fetched for authorId:', post.authorId, authorProfile);
+                console.log('[CategoryPosts] Profile from cache for authorId:', post.authorId, authorProfile);
+
+                // Загружаем профиль только если он не в кэше и это не текущий пользователь
+                if ((!authorProfile || !store.state.profile.profilesCache[post.authorId]) && post.authorId !== currentUserId) {
+                  console.log('[CategoryPosts] Profile not in cache, fetching for authorId:', post.authorId);
+                  await store.dispatch('profile/fetchProfile', post.authorId);
+                  authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
+                  console.log('[CategoryPosts] Profile fetched for authorId:', post.authorId, authorProfile);
+                }
 
                 if (authorProfile) {
-                  authorName = authorProfile.username || authorProfile.profile?.username || post.authorName || 'Гость';
-                  authorAvatar = authorProfile.avatarUrl || authorProfile.profile?.avatarUrl || post.authorAvatar || '/image/empty_avatar.png';
-                  authorRole = authorProfile.role || authorProfile.profile?.role || 'New User';
+                  // Используем данные из поста, если они есть, иначе из профиля
+                  authorName = post.authorName || authorProfile.username || 'Гость';
+                  authorAvatar = post.authorAvatar || authorProfile.avatarUrl || '/image/empty_avatar.png';
+                  authorRole = authorProfile.role || 'New User';
                 } else {
                   console.warn('[CategoryPosts] No profile data returned for authorId:', post.authorId);
                 }
@@ -193,7 +201,6 @@ onMounted(async () => {
                 console.log('[CategoryPosts] Final author data:', { postId: id, authorId: post.authorId, authorName, authorAvatar, authorRole });
               } catch (error) {
                 console.error('[CategoryPosts] Failed to fetch profile for authorId:', post.authorId, error);
-                // Оставляем запасные данные из поста
               }
             } else {
               console.warn('[CategoryPosts] No authorId for post:', id, 'Using fallback:', { authorName });
