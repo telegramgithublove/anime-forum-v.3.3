@@ -26,6 +26,7 @@ import FavoritesPosts from '../views/FavoritesPosts.vue'
 import Security from '../views/Security.vue'
 import MyTopics from '../views/MyTopics.vue'
 import PopularPosts from '../views/PopularPosts.vue'
+import LikedPosts from '../views/LikedPosts.vue'
 
 // Импортируем компоненты аутентификации
 import Registration from '../views/auth/Registration.vue'
@@ -257,6 +258,24 @@ const routes = [
   meta: { 
     requiresAuth: true,
     title: 'Отвеченные посты' 
+}
+},
+{
+  path: '/most-discussed-posts', // Добавляем "s" для соответствия URL
+  name: 'DiscussedPosts.vue',
+  component: DiscussedPosts,
+  meta: { 
+    requiresAuth: true,
+    title: 'Отвеченные посты' 
+}
+},
+{
+  path: '/most-liked-posts', // Добавляем "s" для соответствия URL
+  name: 'LikedPosts.vue',
+  component: LikedPosts,
+  meta: { 
+    requiresAuth: true,
+    title: 'Понрвившиеся посты' 
 }
 },
   {
