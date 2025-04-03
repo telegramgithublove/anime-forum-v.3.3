@@ -203,6 +203,7 @@ onMounted(async () => {
             const isLiked = currentUserId && likes[currentUserId] ? true : false;
             const likesCount = Object.keys(likes).length;
             const commentsCount = post.commentsCount || 0;
+            const views = post.views || 0; // Добавляем views из Firebase
 
             return {
               id,
@@ -214,7 +215,7 @@ onMounted(async () => {
               likes,
               likesCount,
               commentsCount,
-              views: post.views || 0,
+              views, // Убедимся, что views включен
               createdAt: post.createdAt || 0,
               isLiked
             };
@@ -302,11 +303,34 @@ const toggleLike = async (postId) => {
 
 const incrementPostViews = async (postId) => {
   try {
-    const updatedPost = await store.dispatch('posts/incrementViews', postId);
+    const db = getDatabase();
+    const postRefGlobal = dbRef(db, `posts/${postId}`);
+    const postRefCategory = dbRef(db, `categories/${categoryId}/posts/${postId}`);
+
+    // Получаем текущее значение views
+    const snapshot = await get(postRefCategory);
+    if (!snapshot.exists()) throw new Error('Пост не найден');
+
+    const postData = snapshot.val();
+    const currentViews = postData.views || 0;
+    const newViews = currentViews + 1;
+
+    // Обновляем в Firebase
+    const updates = { views: newViews };
+    await update(postRefGlobal, updates);
+    await update(postRefCategory, updates);
+
+    // Обновляем локальное состояние
     const postIndex = posts.value.findIndex(p => p.id === postId);
     if (postIndex !== -1) {
-      posts.value[postIndex].views = updatedPost.views;
+      posts.value[postIndex] = {
+        ...posts.value[postIndex],
+        views: newViews
+      };
     }
+
+    // Также обновляем в Vuex через dispatch
+    await store.dispatch('posts/incrementViews', postId);
   } catch (error) {
     console.error('Ошибка при обновлении просмотров:', error);
   }

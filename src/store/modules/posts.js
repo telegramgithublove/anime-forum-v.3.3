@@ -39,6 +39,15 @@ export default {
     SET_UNSUBSCRIBE(state, unsubscribe) {
       state.unsubscribe = unsubscribe;
     },
+    // Добавляем мутацию для обновления просмотров в реальном времени
+    UPDATE_POST(state, { postId, updatedData }) {
+      if (state.posts[postId]) {
+        state.posts[postId] = {
+          ...state.posts[postId],
+          ...updatedData,
+        };
+      }
+    },
   },
   actions: {
     async createPost({ commit, rootState }, { title, content, categoryId }) {
@@ -118,6 +127,7 @@ export default {
                 filteredPosts[postId] = {
                   ...post,
                   isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
+                  views: post.views || 0, // Убедимся, что views всегда присутствует
                 };
               }
             }
@@ -153,6 +163,7 @@ export default {
           const updatedPostData = {
             ...postData,
             isLiked: postData.likes && currentUserId ? !!postData.likes[currentUserId] : false,
+            views: postData.views || 0, // Убедимся, что views всегда присутствует
           };
           console.log('posts.js: Пост загружен:', updatedPostData);
           commit('SET_POSTS', { [postId]: updatedPostData });
@@ -246,6 +257,27 @@ export default {
         commit('SET_LOADING', false);
       }
     },
+
+    // Добавляем action для синхронизации просмотров в реальном времени
+    async listenPostViews({ commit }, { postId, categoryId }) {
+      try {
+        const db = getDatabase();
+        const postRef = dbRef(db, `categories/${categoryId}/posts/${postId}`);
+        onValue(postRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const postData = snapshot.val();
+            commit('UPDATE_POST', {
+              postId,
+              updatedData: {
+                views: postData.views || 0,
+              },
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Ошибка при подписке на обновления просмотров:', error);
+      }
+    },
   },
   getters: {
     getPostsByCategory: (state, getters, rootState) => (categoryId) => {
@@ -255,6 +287,7 @@ export default {
         .map((post) => ({
           ...post,
           isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
+          views: post.views || 0, // Убедимся, что views всегда доступен
         }));
     },
     getPostById: (state, getters, rootState) => (postId) => {
@@ -264,6 +297,7 @@ export default {
       return {
         ...post,
         isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
+        views: post.views || 0, // Убедимся, что views всегда доступен
       };
     },
   },
