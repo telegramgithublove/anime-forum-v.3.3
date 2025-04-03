@@ -39,7 +39,6 @@ export default {
     SET_UNSUBSCRIBE(state, unsubscribe) {
       state.unsubscribe = unsubscribe;
     },
-    // Добавляем мутацию для обновления просмотров в реальном времени
     UPDATE_POST(state, { postId, updatedData }) {
       if (state.posts[postId]) {
         state.posts[postId] = {
@@ -107,7 +106,6 @@ export default {
         const snapshot = await get(categoryPostIdsRef);
         const postIds = snapshot.exists() ? Object.keys(snapshot.val()) : [];
 
-        // Отписываемся от предыдущей подписки, если она существует
         if (state.unsubscribe) {
           state.unsubscribe();
           commit('SET_UNSUBSCRIBE', null);
@@ -127,7 +125,7 @@ export default {
                 filteredPosts[postId] = {
                   ...post,
                   isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
-                  views: post.views || 0, // Убедимся, что views всегда присутствует
+                  views: post.views || 0,
                 };
               }
             }
@@ -163,7 +161,7 @@ export default {
           const updatedPostData = {
             ...postData,
             isLiked: postData.likes && currentUserId ? !!postData.likes[currentUserId] : false,
-            views: postData.views || 0, // Убедимся, что views всегда присутствует
+            views: postData.views || 0,
           };
           console.log('posts.js: Пост загружен:', updatedPostData);
           commit('SET_POSTS', { [postId]: updatedPostData });
@@ -209,10 +207,8 @@ export default {
           likes: updatedLikes,
         };
 
-        // Обновляем в Firebase
         await update(postRef, updates);
 
-        // Обновляем в Vuex
         commit('UPDATE_POST_LIKES', {
           postId,
           likes: updatedLikes,
@@ -258,7 +254,6 @@ export default {
       }
     },
 
-    // Добавляем action для синхронизации просмотров в реальном времени
     async listenPostViews({ commit }, { postId, categoryId }) {
       try {
         const db = getDatabase();
@@ -278,6 +273,32 @@ export default {
         console.error('Ошибка при подписке на обновления просмотров:', error);
       }
     },
+
+    // Новый action для получения всех постов
+    async fetchAllPosts({ commit }) {
+      commit('SET_LOADING', true);
+      try {
+        const db = getDatabase();
+        const postsRef = dbRef(db, 'posts');
+        const snapshot = await get(postsRef);
+        
+        if (snapshot.exists()) {
+          const allPosts = snapshot.val();
+          commit('SET_POSTS', allPosts);
+          console.log('posts.js: Все посты загружены:', allPosts);
+          return allPosts;
+        } else {
+          console.warn('posts.js: Посты не найдены');
+          return {};
+        }
+      } catch (error) {
+        console.error('posts.js: Ошибка при загрузке всех постов:', error);
+        commit('SET_ERROR', error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
   },
   getters: {
     getPostsByCategory: (state, getters, rootState) => (categoryId) => {
@@ -287,7 +308,7 @@ export default {
         .map((post) => ({
           ...post,
           isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
-          views: post.views || 0, // Убедимся, что views всегда доступен
+          views: post.views || 0,
         }));
     },
     getPostById: (state, getters, rootState) => (postId) => {
@@ -297,8 +318,14 @@ export default {
       return {
         ...post,
         isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
-        views: post.views || 0, // Убедимся, что views всегда доступен
+        views: post.views || 0,
       };
+    },
+    // Новый геттер для популярных постов
+    getPopularPosts: (state) => {
+      return Object.values(state.posts)
+        .filter(post => post.views !== undefined)
+        .sort((a, b) => (b.views || 0) - (a.views || 0));
     },
   },
 };

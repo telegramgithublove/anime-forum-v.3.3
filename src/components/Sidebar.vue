@@ -22,7 +22,7 @@
         <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
       </div>
       <h3 class="mt-4 text-xl font-semibold text-white">{{ userName }}</h3>
-      <p class="text-xs text-gray-300">{{ userRole }}</p> <!-- Изменено на userRole для реактивности -->
+      <p class="text-xs text-gray-300">{{ userRole }}</p>
     </div>
 
     <!-- Navigation -->
@@ -36,6 +36,36 @@
         <i :class="['fas', item.icon, 'text-lg transition-all duration-200 group-hover:scale-110']"></i>
         <span class="font-medium tracking-wide">{{ item.text }}</span>
       </a>
+
+      <!-- Новые поля -->
+      <div class="mt-4 space-y-2">
+        <!-- Посты по популярности -->
+        <router-link 
+          to="/popular-posts" 
+          class="flex items-center space-x-3 px-4 py-3 rounded-xl text-white/80 hover:text-white hover:bg-gradient-to-r from-purple-500/20 to-blue-500/20 transition-all duration-300 group"
+        >
+          <i class="fas fa-chart-line text-lg transition-all duration-200 group-hover:scale-110 group-hover:text-purple-300"></i>
+          <span class="font-medium tracking-wide">Посты по популярности</span>
+        </router-link>
+
+        <!-- Самые обсуждаемые посты -->
+        <router-link 
+          to="/most-discussed-posts" 
+          class="flex items-center space-x-3 px-4 py-3 rounded-xl text-white/80 hover:text-white hover:bg-gradient-to-r from-purple-500/20 to-blue-500/20 transition-all duration-300 group"
+        >
+          <i class="fas fa-comments text-lg transition-all duration-200 group-hover:scale-110 group-hover:text-purple-300"></i>
+          <span class="font-medium tracking-wide">Самые обсуждаемые посты</span>
+        </router-link>
+
+        <!-- Самые понравившиеся посты -->
+        <router-link 
+          to="/most-liked-posts" 
+          class="flex items-center space-x-3 px-4 py-3 rounded-xl text-white/80 hover:text-white hover:bg-gradient-to-r from-purple-500/20 to-blue-500/20 transition-all duration-300 group"
+        >
+          <i class="fas fa-heart text-lg transition-all duration-200 group-hover:scale-110 group-hover:text-purple-300"></i>
+          <span class="font-medium tracking-wide">Самые понравившиеся посты</span>
+        </router-link>
+      </div>
     </nav>
 
     <!-- Bottom Actions -->
@@ -92,12 +122,10 @@ const isLoading = ref(false);
 
 // Получаем данные из profile store
 const userProfile = computed(() => store.getters['profile/getProfile']);
-const avatarSrc = ref('/image/empty_avatar.png'); // Устанавливаем начальное значение
+const avatarSrc = ref('/image/empty_avatar.png');
 const userName = computed(() => store.getters['profile/username'] || 'Гость');
 const signature = computed(() => store.getters['profile/signature'] || '');
 const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
-
-// Добавляем реактивное получение роли из Vuex
 const userRole = computed(() => store.getters['profile/getRole'] || 'New User');
 
 // Обработчик ошибки загрузки аватара
@@ -114,12 +142,7 @@ watch(
   { immediate: true }
 );
 
-const menuItems = [
-  { text: 'Последние темы', icon: 'fa-clock', link: '#' },
-  { text: 'Популярные обсуждения', icon: 'fa-fire', link: '#' },
-  { text: 'Рекомендации аниме', icon: 'fa-star', link: '#' },
-  { text: 'Сезонные аниме', icon: 'fa-calendar', link: '#' }
-];
+
 
 const toggleSidebar = () => {
   isCollapsed.value = !isCollapsed.value;
@@ -135,7 +158,7 @@ async function logout() {
       username: 'Гость',
       avatarUrl: '/image/empty_avatar.png',
       signature: '',
-      role: 'New User', // Добавляем сброс роли
+      role: 'New User',
       settings: {
         profileVisibility: true,
         notifyMessages: true,

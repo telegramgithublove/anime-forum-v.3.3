@@ -25,6 +25,7 @@ import Settings from '../views/Settings.vue'
 import FavoritesPosts from '../views/FavoritesPosts.vue'
 import Security from '../views/Security.vue'
 import MyTopics from '../views/MyTopics.vue'
+import PopularPosts from '../views/PopularPosts.vue'
 
 // Импортируем компоненты аутентификации
 import Registration from '../views/auth/Registration.vue'
@@ -239,6 +240,24 @@ const routes = [
       title: 'Мои темы' // Обновляем title для точности
     }
   },
+  {
+    path: '/popular-posts', // Добавляем "s" для соответствия URL
+    name: 'PopularPosts.vue',
+    component: PopularPosts,
+    meta: { 
+      requiresAuth: true,
+      title: 'Популярные посты' 
+  }
+},
+{
+  path: '/popular-posts', // Добавляем "s" для соответствия URL
+  name: 'PopularPosts.vue',
+  component: PopularPosts,
+  meta: { 
+    requiresAuth: true,
+    title: 'Популярные посты' 
+}
+},
   {
     path: '/notifications', // Добавляем "s" для соответствия URL
     name: 'Notifications',
