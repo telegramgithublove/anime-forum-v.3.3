@@ -28,7 +28,11 @@
       <div v-if="pagedPosts.length > 0 && !isLoading" class="space-y-6">
         <div v-for="post in pagedPosts" :key="post.id" class="group">
           <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 overflow-hidden">
-            <router-link :to="{ name: 'post-details', params: { id: post.id }}" class="block p-8">
+            <router-link 
+              :to="{ name: 'post-details', params: { id: post.id }}" 
+              class="block p-8"
+              @click="incrementPostViews(post.id)"
+            >
               <div class="flex items-start space-x-6">
                 <div class="flex-shrink-0 text-center">
                   <img 
@@ -82,14 +86,15 @@
                 <button 
                   @click.stop="toggleLike(post.id)"
                   class="flex items-center space-x-1 text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-500 transition-colors duration-200"
-                  :disabled="isLoadingLikes"
+                  :disabled="isLoadingLikes || !isAuthenticated"
+                  :title="isAuthenticated ? '' : 'Требуется авторизация'"
                 >
                   <i class="fas" :class="post.isLiked ? 'fa-heart text-purple-600 dark:text-purple-500' : 'fa-heart'"></i>
                   <span>{{ post.likesCount }}</span>
                 </button>
                 <span class="flex items-center space-x-1 text-gray-500 dark:text-gray-400">
                   <i class="fas fa-comment"></i>
-                  <span>{{ post.comments ? Object.keys(post.comments).length : 0 }}</span>
+                  <span>{{ post.commentsCount }}</span>
                 </span>
                 <span class="flex items-center space-x-1 text-gray-500 dark:text-gray-400">
                   <i class="fas fa-eye"></i>
@@ -125,12 +130,13 @@
 
 <script setup>
 import { ref, onMounted, computed, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
-import { getDatabase, ref as dbRef, get, onValue } from 'firebase/database';
+import { getDatabase, ref as dbRef, get, onValue, update } from 'firebase/database';
 import Pagination from '../components/Pagination.vue';
 
 const route = useRoute();
+const router = useRouter();
 const store = useStore();
 const categoryId = route.params.categoryId;
 const posts = ref([]);
@@ -141,6 +147,8 @@ const isLoadingLikes = ref(false);
 const loadingProgress = ref(0);
 const itemsPerPage = 10;
 let unsubscribe = null;
+
+const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
 
 onMounted(async () => {
   try {
@@ -170,18 +178,15 @@ onMounted(async () => {
           const postsArray = await Promise.all(Object.entries(postsData).map(async ([id, post]) => {
             console.log('[CategoryPosts] Post:', { id, post });
 
-            // Используем данные из поста как приоритетные
             let authorName = post.authorName || 'Гость';
             let authorAvatar = post.authorAvatar || '/image/empty_avatar.png';
             let authorRole = 'New User';
 
-            if (post.authorId) {
+            if (post.authorId && post.authorId !== currentUserId) {
               try {
-                // Проверяем кэш профиля
                 let authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
                 console.log('[CategoryPosts] Profile from cache for authorId:', post.authorId, authorProfile);
 
-                // Загружаем профиль только если он не в кэше и это не текущий пользователь
                 if ((!authorProfile || !store.state.profile.profilesCache[post.authorId]) && post.authorId !== currentUserId) {
                   console.log('[CategoryPosts] Profile not in cache, fetching for authorId:', post.authorId);
                   await store.dispatch('profile/fetchProfile', post.authorId);
@@ -190,7 +195,6 @@ onMounted(async () => {
                 }
 
                 if (authorProfile) {
-                  // Используем данные из поста, если они есть, иначе из профиля
                   authorName = post.authorName || authorProfile.username || 'Гость';
                   authorAvatar = post.authorAvatar || authorProfile.avatarUrl || '/image/empty_avatar.png';
                   authorRole = authorProfile.role || 'New User';
@@ -202,11 +206,17 @@ onMounted(async () => {
               } catch (error) {
                 console.error('[CategoryPosts] Failed to fetch profile for authorId:', post.authorId, error);
               }
-            } else {
-              console.warn('[CategoryPosts] No authorId for post:', id, 'Using fallback:', { authorName });
+            } else if (post.authorId === currentUserId) {
+              // Для текущего пользователя берем данные из auth
+              authorName = store.getters['auth/getUsername'];
+              authorAvatar = store.getters['auth/getUserAvatar'];
+              authorRole = store.getters['auth/userRole'] || 'New User';
             }
 
-            const isLiked = post.likes && currentUserId && post.likes[currentUserId] || false;
+            const likes = post.likes || {};
+            const isLiked = currentUserId && likes[currentUserId] ? true : false;
+            const likesCount = Object.keys(likes).length;
+            const commentsCount = post.comments ? Object.keys(post.comments).length : 0;
 
             return {
               id,
@@ -215,9 +225,10 @@ onMounted(async () => {
               authorAvatar,
               authorRole,
               tags: Array.isArray(post.tags) ? post.tags : (post.tags ? [post.tags] : ['форум']),
-              likes: post.likes || {},
-              likesCount: post.likesCount || Object.keys(post.likes || {}).length,
-              comments: post.comments || [],
+              likes,
+              likesCount,
+              comments: post.comments || {},
+              commentsCount,
               views: post.views || 0,
               createdAt: post.createdAt || 0,
               isLiked
@@ -229,7 +240,6 @@ onMounted(async () => {
           store.dispatch('pagination/setItemsPerPage', itemsPerPage);
           console.log('[CategoryPosts] Posts updated:', postsArray);
 
-          // Проверка уникальности authorId
           const authorIds = postsArray.map(post => post.authorId);
           const uniqueAuthorIds = new Set(authorIds);
           console.log('[Debug] All authorIds in posts:', authorIds);
@@ -287,24 +297,82 @@ const formatDate = (timestamp) => {
 };
 
 const toggleLike = async (postId) => {
+  if (!isAuthenticated.value) {
+    alert('Требуется авторизация для лайка');
+    return;
+  }
   try {
     isLoadingLikes.value = true;
-    const updatedPost = await store.dispatch('posts/toggleLike', postId);
+    const currentUserId = store.state.auth.user?.uid || localStorage.getItem('userId');
+    if (!currentUserId) throw new Error('Пользователь не авторизован');
+
+    const db = getDatabase();
+    const postRefGlobal = dbRef(db, `posts/${postId}`);
+    const postRefCategory = dbRef(db, `categories/${categoryId}/posts/${postId}`);
+
+    // Получаем текущие данные из Firebase
+    const postSnapshotGlobal = await get(postRefGlobal);
+    const postSnapshotCategory = await get(postRefCategory);
+
+    if (!postSnapshotGlobal.exists() || !postSnapshotCategory.exists()) {
+      throw new Error('Пост не найден');
+    }
+
+    const postDataGlobal = postSnapshotGlobal.val();
+    const postDataCategory = postSnapshotCategory.val();
+    const likes = postDataCategory.likes || {};
+    const currentLikesCount = Object.keys(likes).length;
+    const isLiked = likes[currentUserId] ? true : false;
+
+    // Обновляем лайки
+    const newLikesCount = isLiked ? currentLikesCount - 1 : currentLikesCount + 1;
+    const updatedLikes = { ...likes };
+    if (isLiked) {
+      delete updatedLikes[currentUserId];
+    } else {
+      updatedLikes[currentUserId] = true;
+    }
+
+    // Обновляем оба пути в Firebase
+    const updates = {
+      likes: updatedLikes,
+      likesCount: newLikesCount
+    };
+    await update(postRefGlobal, updates);
+    await update(postRefCategory, updates);
+
+    // Обновляем локальное состояние
     const postIndex = posts.value.findIndex(p => p.id === postId);
     if (postIndex !== -1) {
-      const currentUserId = store.state.auth.user?.uid || localStorage.getItem('userId');
-      const isLiked = updatedPost.likes && updatedPost.likes[currentUserId] || false;
       posts.value[postIndex] = {
         ...posts.value[postIndex],
-        likes: updatedPost.likes,
-        likesCount: updatedPost.likesCount,
-        isLiked
+        likes: updatedLikes,
+        likesCount: newLikesCount,
+        isLiked: !isLiked
+      };
+    }
+
+    console.log('[CategoryPosts] Лайк обновлен:', { postId, likes: updatedLikes, likesCount: newLikesCount });
+  } catch (error) {
+    console.error('Ошибка при переключении лайка:', error);
+    alert(error.message);
+  } finally {
+    isLoadingLikes.value = false;
+  }
+};
+
+const incrementPostViews = async (postId) => {
+  try {
+    const updatedPost = await store.dispatch('posts/incrementViews', postId);
+    const postIndex = posts.value.findIndex(p => p.id === postId);
+    if (postIndex !== -1) {
+      posts.value[postIndex] = {
+        ...posts.value[postIndex],
+        views: updatedPost.views
       };
     }
   } catch (error) {
-    console.error('Ошибка при переключении лайка:', error);
-  } finally {
-    isLoadingLikes.value = false;
+    console.error('Ошибка при обновлении просмотров:', error);
   }
 };
 

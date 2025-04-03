@@ -1,4 +1,4 @@
-import { ref as dbRef, push, set, get, onValue, update } from 'firebase/database'; // Добавляем update
+import { ref as dbRef, push, set, get, onValue, update } from 'firebase/database';
 import { getDatabase } from 'firebase/database';
 
 export default {
@@ -7,6 +7,7 @@ export default {
     posts: {},
     loading: false,
     error: null,
+    unsubscribe: null, // Для хранения функции отписки
   },
   mutations: {
     SET_POSTS(state, posts) {
@@ -17,6 +18,26 @@ export default {
     },
     SET_ERROR(state, error) {
       state.error = error;
+    },
+    UPDATE_POST_LIKES(state, { postId, likes, likesCount }) {
+      if (state.posts[postId]) {
+        state.posts[postId] = {
+          ...state.posts[postId],
+          likes: { ...likes },
+          likesCount,
+        };
+      }
+    },
+    UPDATE_POST_VIEWS(state, { postId, views }) {
+      if (state.posts[postId]) {
+        state.posts[postId] = {
+          ...state.posts[postId],
+          views,
+        };
+      }
+    },
+    SET_UNSUBSCRIBE(state, unsubscribe) {
+      state.unsubscribe = unsubscribe;
     },
   },
   actions: {
@@ -36,12 +57,15 @@ export default {
           title,
           content,
           authorId: user.uid,
+          authorName: user.profile.username,
+          authorAvatar: user.profile.avatarUrl,
           categoryId,
           createdAt: new Date().toISOString(),
           likesCount: 0,
           views: 0,
           userId: user.uid,
-          likes: {}, // Добавляем объект для хранения лайков
+          likes: {},
+          comments: {},
         };
 
         await set(newPostRef, postData);
@@ -49,7 +73,6 @@ export default {
 
         const categoryRef = dbRef(db, `categories/${categoryId}/postIds/${postId}`);
         await set(categoryRef, true);
-        console.log('posts.js: Ссылка на пост добавлена в категорию:', categoryId);
 
         const categoryCountRef = dbRef(db, `categories/${categoryId}/postsCount`);
         const snapshot = await get(categoryCountRef);
@@ -67,7 +90,7 @@ export default {
       }
     },
 
-    async fetchPostsByCategory({ commit }, categoryId) {
+    async fetchPostsByCategory({ commit, state, rootState }, categoryId) {
       commit('SET_LOADING', true);
       try {
         const db = getDatabase();
@@ -75,17 +98,40 @@ export default {
         const snapshot = await get(categoryPostIdsRef);
         const postIds = snapshot.exists() ? Object.keys(snapshot.val()) : [];
 
-        const posts = {};
-        for (const postId of postIds) {
-          const postRef = dbRef(db, `posts/${postId}`);
-          const postSnapshot = await get(postRef);
-          if (postSnapshot.exists()) {
-            posts[postId] = postSnapshot.val();
-          }
+        // Отписываемся от предыдущей подписки, если она существует
+        if (state.unsubscribe) {
+          state.unsubscribe();
+          commit('SET_UNSUBSCRIBE', null);
         }
 
-        console.log('posts.js: Посты загружены для категории:', categoryId, posts);
-        commit('SET_POSTS', posts);
+        const postsRef = dbRef(db, 'posts');
+        const unsubscribe = onValue(
+          postsRef,
+          (snapshot) => {
+            const allPosts = snapshot.val() || {};
+            const filteredPosts = {};
+            const currentUserId = rootState.auth.user?.uid;
+
+            for (const postId of postIds) {
+              if (allPosts[postId]) {
+                const post = allPosts[postId];
+                filteredPosts[postId] = {
+                  ...post,
+                  isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
+                };
+              }
+            }
+
+            commit('SET_POSTS', filteredPosts);
+            console.log('posts.js: Посты обновлены для категории:', categoryId, filteredPosts);
+          },
+          (error) => {
+            console.error('posts.js: Ошибка в подписке onValue:', error);
+            commit('SET_ERROR', error.message);
+          }
+        );
+
+        commit('SET_UNSUBSCRIBE', unsubscribe);
       } catch (error) {
         console.error('posts.js: Ошибка при загрузке постов:', error);
         commit('SET_ERROR', error.message);
@@ -95,7 +141,7 @@ export default {
       }
     },
 
-    async fetchPostById({ commit }, postId) {
+    async fetchPostById({ commit, rootState }, postId) {
       commit('SET_LOADING', true);
       try {
         const db = getDatabase();
@@ -103,9 +149,14 @@ export default {
         const snapshot = await get(postRef);
         if (snapshot.exists()) {
           const postData = snapshot.val();
-          console.log('posts.js: Пост загружен:', postData);
-          commit('SET_POSTS', { [postId]: postData });
-          return postData;
+          const currentUserId = rootState.auth.user?.uid;
+          const updatedPostData = {
+            ...postData,
+            isLiked: postData.likes && currentUserId ? !!postData.likes[currentUserId] : false,
+          };
+          console.log('posts.js: Пост загружен:', updatedPostData);
+          commit('SET_POSTS', { [postId]: updatedPostData });
+          return updatedPostData;
         } else {
           console.warn('posts.js: Пост не найден для postId:', postId);
           return null;
@@ -128,7 +179,6 @@ export default {
 
         if (!user) throw new Error('Требуется авторизация для лайка');
 
-        // Получаем текущие данные поста
         const snapshot = await get(postRef);
         if (!snapshot.exists()) {
           throw new Error('Пост не найден');
@@ -139,28 +189,27 @@ export default {
         const currentLikesCount = postData.likesCount || 0;
         const userId = user.uid;
 
-        // Проверяем, лайкнул ли пользователь уже этот пост
         const isLiked = !!likes[userId];
         const newLikesCount = isLiked ? currentLikesCount - 1 : currentLikesCount + 1;
-        const updatedLikes = { ...likes, [userId]: isLiked ? null : true }; // null удаляет ключ из Firebase
+        const updatedLikes = { ...likes, [userId]: isLiked ? null : true };
 
-        // Обновляем пост в базе данных
         const updates = {
           likesCount: newLikesCount,
           likes: updatedLikes,
         };
+
+        // Обновляем в Firebase
         await update(postRef, updates);
 
-        // Обновляем локальное состояние
-        const updatedPostData = {
-          ...postData,
-          likesCount: newLikesCount,
+        // Обновляем в Vuex
+        commit('UPDATE_POST_LIKES', {
+          postId,
           likes: updatedLikes,
-        };
-        commit('SET_POSTS', { [postId]: updatedPostData });
-        console.log('posts.js: Лайк обновлен для поста:', updatedPostData);
+          likesCount: newLikesCount,
+        });
 
-        return updatedPostData; // Возвращаем обновленные данные поста
+        console.log('posts.js: Лайк обновлен для поста:', postId, updates);
+        return { ...postData, ...updates, isLiked: !isLiked };
       } catch (error) {
         console.error('posts.js: Ошибка при переключении лайка:', error);
         commit('SET_ERROR', error.message);
@@ -169,11 +218,53 @@ export default {
         commit('SET_LOADING', false);
       }
     },
+
+    async incrementViews({ commit }, postId) {
+      commit('SET_LOADING', true);
+      try {
+        const db = getDatabase();
+        const postRef = dbRef(db, `posts/${postId}`);
+        const snapshot = await get(postRef);
+        if (!snapshot.exists()) {
+          throw new Error('Пост не найден');
+        }
+
+        const postData = snapshot.val();
+        const currentViews = postData.views || 0;
+        const newViews = currentViews + 1;
+
+        await update(postRef, { views: newViews });
+        commit('UPDATE_POST_VIEWS', { postId, views: newViews });
+
+        console.log('posts.js: Просмотры обновлены для поста:', postId, newViews);
+        return { ...postData, views: newViews };
+      } catch (error) {
+        console.error('posts.js: Ошибка при обновлении просмотров:', error);
+        commit('SET_ERROR', error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
   },
   getters: {
-    getPostsByCategory: (state) => (categoryId) => {
-      return Object.values(state.posts).filter(post => post.categoryId === categoryId);
+    getPostsByCategory: (state, getters, rootState) => (categoryId) => {
+      const currentUserId = rootState.auth.user?.uid;
+      return Object.values(state.posts)
+        .filter((post) => post.categoryId === categoryId)
+        .map((post) => ({
+          ...post,
+          isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
+        }));
     },
-    getPostById: (state) => (postId) => state.posts[postId] || null,
+    getPostById: (state, getters, rootState) => (postId) => {
+      const currentUserId = rootState.auth.user?.uid;
+      const post = state.posts[postId];
+      if (!post) return null;
+      return {
+        ...post,
+        isLiked: post.likes && currentUserId ? !!post.likes[currentUserId] : false,
+      };
+    },
   },
 };

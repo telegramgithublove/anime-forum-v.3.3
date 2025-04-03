@@ -307,6 +307,7 @@ const isLikedByCurrentUser = computed(() => {
 
 const isFavorite = computed(() => {
   const user = store.state.auth.user;
+  
   if (!user) return false;
   const favorites = store.getters['favorites/getFavoritePosts'] || [];
   return favorites.some(p => p.id === postId.value);
