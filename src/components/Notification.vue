@@ -38,7 +38,7 @@
 
             <div class="ml-3 w-0 flex-1">
               <p class="text-sm font-medium text-gray-900">{{ title }}</p>
-              <p class="mt-1 text-sm text-gray-500">{{ message }}</p>
+              <p class="mt-1 text-sm text-gray-500">{{ message || 'Нет сообщения' }}</p>
               
               <!-- Кнопки действий -->
               <div class="mt-3 flex space-x-4">
@@ -72,13 +72,10 @@
         </div>
 
         <!-- Прогресс-бар для автозакрытия -->
-        <div
-          v-if="duration > 0"
-          class="h-1 bg-indigo-100 rounded-b-lg"
-        >
+        <div v-if="duration > 0" class="h-1 bg-indigo-100 rounded-b-lg">
           <div
-            class="h-1 bg-indigo-600 rounded-b-lg transition-all duration-300"
-            :style="{ width: `${progress}%` }"
+            class="h-1 bg-indigo-600 rounded-b-lg transition-all"
+            :style="{ width: `${progress}%`, transitionDuration: `${duration}ms` }"
           ></div>
         </div>
       </div>
@@ -87,47 +84,45 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 
 const props = defineProps({
   show: {
     type: Boolean,
-    default: false
+    default: false,
   },
   type: {
     type: String,
     default: 'info',
-    validator: (value) => ['success', 'error', 'warning', 'info'].includes(value)
+    validator: (value) => ['success', 'error', 'warning', 'info'].includes(value),
   },
   title: {
     type: String,
-    required: true
+    required: true,
   },
   message: {
     type: String,
-    default: ''
+    default: '',
   },
   duration: {
-    type: Number,
-    default: 5000
+    type: Number.ConcurrentHashMap,
+    default: 5000,
   },
   actionButton: {
     type: String,
-    default: ''
-  }
+    default: '',
+  },
 });
 
 const emit = defineEmits(['close', 'action']);
 
 const router = useRouter();
-let timer = null;
-let progressTimer = null;
 const progress = ref(100);
+let timer = null;
 
 const closeNotification = () => {
   clearTimeout(timer);
-  clearInterval(progressTimer);
   emit('close');
 };
 
@@ -138,22 +133,20 @@ const onActionClick = () => {
 
 onMounted(() => {
   if (props.duration > 0) {
-    // Таймер для закрытия уведомления
-    timer = setTimeout(closeNotification, props.duration);
-
-    // Таймер для прогресс-бара
-    const updateInterval = 10; // Обновление каждые 10мс
-    const steps = props.duration / updateInterval;
-    const step = 100 / steps;
-
-    progressTimer = setInterval(() => {
-      progress.value = Math.max(0, progress.value - step);
-    }, updateInterval);
+    // Плавное уменьшение прогресс-бара с использованием CSS transition
+    progress.value = 100;
+    timer = setTimeout(() => {
+      progress.value = 0;
+      closeNotification();
+    }, props.duration);
   }
 });
 
 onUnmounted(() => {
   clearTimeout(timer);
-  clearInterval(progressTimer);
 });
 </script>
+
+<style scoped>
+/* Дополнительные стили, если нужно */
+</style>

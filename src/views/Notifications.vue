@@ -13,7 +13,7 @@
       </div>
 
       <!-- Список уведомлений -->
-      <div v-else-if="notifications.length" class="space-y-4">
+      <div v-else-if="notifications && notifications.length" class="space-y-4">
         <div
           v-for="notification in notifications"
           :key="notification.id"
@@ -89,8 +89,11 @@ const store = useStore();
 const toast = useToast();
 const isLoading = ref(true);
 
-// Получаем уведомления из хранилища
-const notifications = computed(() => store.getters['notifications/getNotifications']);
+// Получаем уведомления из хранилища с защитой от undefined
+const notifications = computed(() => {
+  const notifs = store.getters['notifications/getNotifications'];
+  return Array.isArray(notifs) ? notifs : [];
+});
 
 // Получаем текущего пользователя
 const currentUser = computed(() => store.state.auth.user);
@@ -104,16 +107,18 @@ onMounted(async () => {
       return;
     }
 
-    // Загружаем посты пользователя, чтобы подписаться на их уведомления
-    await store.dispatch('posts/fetchPostsByCategory', '-OJTCQi2RB-FivSg_Cap'); // Замените на нужную категорию или добавьте логику для всех категорий
-    const userPosts = Object.values(store.state.posts.posts).filter(post => post.authorId === currentUser.value.uid);
+    // Загружаем посты пользователя
+    await store.dispatch('posts/fetchPostsByCategory', '-OJTCQi2RB-FivSg_Cap'); // Замените на нужную категорию или логику
+    const userPosts = Object.values(store.state.posts.posts || {}).filter(
+      (post) => post.authorId === currentUser.value.uid
+    );
 
     // Подписываемся на уведомления для всех постов пользователя
-    userPosts.forEach(post => {
+    userPosts.forEach((post) => {
       store.dispatch('notifications/startListeningNotifications', post.id);
     });
   } catch (error) {
-    console.error('Notification.vue - Ошибка при загрузке уведомлений:', error);
+    console.error('Notifications.vue - Ошибка при загрузке уведомлений:', error);
     toast.error('Ошибка при загрузке уведомлений');
   } finally {
     isLoading.value = false;
@@ -122,8 +127,10 @@ onMounted(async () => {
 
 // Отписываемся от уведомлений при размонтировании
 onUnmounted(() => {
-  const userPosts = Object.values(store.state.posts.posts).filter(post => post.authorId === currentUser.value?.uid);
-  userPosts.forEach(post => {
+  const userPosts = Object.values(store.state.posts.posts || {}).filter(
+    (post) => post.authorId === currentUser.value?.uid
+  );
+  userPosts.forEach((post) => {
     store.dispatch('notifications/stopListeningNotifications', post.id);
   });
 });

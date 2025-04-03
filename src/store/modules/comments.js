@@ -79,7 +79,7 @@ const actions = {
     }
   },
 
-  async addComment({ commit, rootState }, commentData) {
+  async addComment({ commit, rootState, dispatch }, commentData) {
     try {
       const userId = rootState.auth.user?.uid || localStorage.getItem('userId') || 'default';
       if (!userId) throw new Error('Пользователь не авторизован');
@@ -109,6 +109,24 @@ const actions = {
 
       await set(newCommentRef, comment);
       console.log('comments.js: Комментарий успешно добавлен:', comment);
+
+      // Создаем уведомление для автора поста
+      const postRef = databaseRef(database, `posts/${commentData.postId}`);
+      const postSnapshot = await get(postRef);
+      if (postSnapshot.exists()) {
+        const post = postSnapshot.val();
+        if (post.authorId && post.authorId !== userId) {
+          const notificationData = {
+            userId: post.authorId,
+            postId: commentData.postId,
+            title: 'Новый комментарий',
+            message: `${userProfile.username || 'Гость'} оставил комментарий к вашему посту: "${commentData.content.substring(0, 50)}..."`,
+            type: 'comment',
+            timestamp: Date.now(),
+          };
+          await dispatch('notifications/addNotification', notificationData, { root: true });
+        }
+      }
     } catch (error) {
       console.error('comments.js: Ошибка при добавлении комментария:', error);
       commit('SET_ERROR', error.message);
