@@ -1,22 +1,17 @@
 <template>
   <div class="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-gray-900 dark:via-purple-900 dark:to-blue-900 p-4 sm:p-6 md:p-8">
     <div class="max-w-4xl mx-auto space-y-8 pb-48">
-      <!-- Кнопка назад -->
       <button @click="goBack" class="group flex items-center space-x-2 text-gray-600 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 transition-all duration-300">
         <i class="fas fa-arrow-left text-lg transform group-hover:-translate-x-1 transition-transform duration-300"></i>
         <span class="text-sm font-semibold uppercase tracking-wide">Назад</span>
       </button>
 
-      <!-- Загрузка -->
       <div v-if="isLoading" class="text-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent mx-auto"></div>
       </div>
 
-      <!-- Контейнер поста и комментариев -->
       <div v-else-if="post && postId" class="space-y-12">
-        <!-- Карточка поста -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden transform hover:shadow-2xl transition-all duration-300">
-          <!-- Шапка поста -->
           <div class="p-6 border-b border-gray-100 dark:border-gray-700">
             <div class="flex items-center space-x-6">
               <div class="flex-shrink-0 group">
@@ -54,7 +49,6 @@
             </div>
           </div>
 
-          <!-- Содержимое поста -->
           <div class="p-6">
             <div class="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-200 break-words" v-html="post.content || ''"></div>
             <div v-if="post.pictures && Object.keys(post.pictures).length" class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
@@ -94,7 +88,6 @@
             </div>
           </div>
 
-          <!-- Действия с постом -->
           <div class="p-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700">
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-6">
@@ -104,7 +97,7 @@
                 </button>
                 <button @click="focusComment" class="flex items-center space-x-2 text-gray-500 hover:text-blue-500 transition-all duration-300">
                   <i class="fas fa-comment text-lg"></i>
-                  <span class="text-sm font-medium">{{ comments.length }}</span>
+                  <span class="text-sm font-medium">{{ post.commentsCount }}</span>
                 </button>
               </div>
               <div class="relative group">
@@ -119,7 +112,6 @@
           </div>
         </div>
 
-        <!-- Секция комментариев -->
         <div class="space-y-6">
           <div class="flex items-center space-x-3">
             <i class="fas fa-comments text-2xl text-purple-500"></i>
@@ -130,7 +122,6 @@
           <Pagination :total-items="totalComments" :items-per-page="itemsPerPage" :current-page="currentPage" @page-changed="handlePageChange" />
         </div>
 
-        <!-- Форма комментария -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 transform hover:shadow-2xl transition-all duration-300">
           <div class="flex items-center space-x-3 mb-4">
             <i class="fas fa-pen-alt text-2xl text-purple-500"></i>
@@ -198,7 +189,6 @@
         </div>
       </div>
 
-      <!-- Если пост не найден -->
       <div v-else class="text-center py-12">
         <p class="text-gray-500 dark:text-gray-400">Пост не найден или произошла ошибка</p>
       </div>
@@ -211,6 +201,7 @@ import { ref, onMounted, computed, onBeforeUnmount, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import { useToast } from 'vue-toastification';
+import { getDatabase, ref as dbRef, update, get } from 'firebase/database';
 import Comments from '../components/Comments.vue';
 import Pagination from '../components/Pagination.vue';
 
@@ -230,21 +221,15 @@ const videoFile = ref(null);
 const post = ref(null);
 const isLoading = ref(true);
 
-const postId = computed(() => {
-  const id = route.params.id;
-  console.log('PostDetails.vue - Вычисляем postId:', id);
-  return id;
-});
-
+const postId = computed(() => route.params.id);
 const comments = computed(() => store.getters['comments/getComments'] || []);
 const currentPage = computed(() => store.getters['pagination/getCurrentPage']);
 const itemsPerPage = ref(10);
-const totalComments = computed(() => comments.value.length);
+const totalComments = computed(() => post.value?.commentsCount || 0);
 
 const MAX_CHARS = 333;
 const remainingChars = computed(() => MAX_CHARS - (commentContent.value?.length || 0));
 
-// Текущий пользователь
 const currentUser = computed(() => {
   const authUser = store.state.auth.user || {};
   return {
@@ -254,11 +239,9 @@ const currentUser = computed(() => {
   };
 });
 
-// Исправленный authorData с дополнительной проверкой
 const authorData = computed(() => {
   const authorId = post.value?.authorId;
   if (!authorId || !post.value) {
-    console.warn('PostDetails.vue - authorId отсутствует или пост не загружен:', post.value);
     return {
       name: 'Гость',
       avatar: '/image/empty_avatar.png',
@@ -266,33 +249,18 @@ const authorData = computed(() => {
     };
   }
 
-  // Получаем профиль из кэша Vuex
   const authorProfile = store.getters['profile/getProfileByUserId'](authorId);
-  console.log('PostDetails.vue - Данные профиля автора из кэша:', authorProfile);
-
-  // Дополнительная проверка: если профиля нет в кэше или он некорректен
-  if (!authorProfile || (!authorProfile.username && !authorProfile.profile?.username)) {
-    console.warn('PostDetails.vue - Профиль не найден в кэше или некорректен для authorId:', authorId, authorProfile);
-    // Используем данные из поста как запасной вариант
-    if (post.value.authorName && post.value.authorAvatar) {
-      return {
-        name: post.value.authorName,
-        avatar: post.value.authorAvatar,
-        role: 'New User', // Роль по умолчанию, так как её нет в данных поста
-      };
-    }
-    // Если данных нет и в посте, возвращаем значения по умолчанию
+  if (!authorProfile) {
     return {
-      name: 'Гость',
-      avatar: '/image/empty_avatar.png',
+      name: post.value.authorName || 'Гость',
+      avatar: post.value.authorAvatar || '/image/empty_avatar.png',
       role: 'New User',
     };
   }
 
-  // Возвращаем данные из профиля, если они корректны
   return {
-    name: authorProfile?.profile?.username || authorProfile?.username || 'Гость',
-    avatar: authorProfile?.profile?.avatarUrl || authorProfile?.avatarUrl || '/image/empty_avatar.png',
+    name: authorProfile?.profile?.username || authorProfile?.username || post.value.authorName || 'Гость',
+    avatar: authorProfile?.profile?.avatarUrl || authorProfile?.avatarUrl || post.value.authorAvatar || '/image/empty_avatar.png',
     role: authorProfile?.profile?.role || authorProfile?.role || 'New User',
   };
 });
@@ -302,21 +270,18 @@ const likesCount = computed(() => post.value?.likesCount || 0);
 const isLikedByCurrentUser = computed(() => {
   const user = store.state.auth.user;
   if (!post.value || !user) return false;
-  return false; // Временная заглушка, замените на реальную логику
+  return post.value.likes && post.value.likes[user.uid] === true;
 });
 
 const isFavorite = computed(() => {
   const user = store.state.auth.user;
-  
   if (!user) return false;
   const favorites = store.getters['favorites/getFavoritePosts'] || [];
   return favorites.some(p => p.id === postId.value);
 });
 
-// Функция загрузки данных
 const loadPostData = async () => {
   if (!postId.value) {
-    console.error('PostDetails.vue - postId отсутствует в route.params.id');
     toast.error('Не указан ID поста');
     router.push('/');
     return;
@@ -324,41 +289,28 @@ const loadPostData = async () => {
 
   try {
     isLoading.value = true;
-    console.log('PostDetails.vue - Начало загрузки данных для postId:', postId.value);
-
     const postData = await store.dispatch('posts/fetchPostById', postId.value);
     if (!postData) {
-      console.warn('PostDetails.vue - Пост не найден для postId:', postId.value);
       toast.warning('Пост не найден');
       router.push('/');
       return;
     }
     post.value = postData;
-    console.log('PostDetails.vue - Пост загружен:', post.value);
 
     if (post.value.authorId) {
-      console.log('PostDetails.vue - Загрузка профиля автора для authorId:', post.value.authorId);
-      const authorProfile = await store.dispatch('profile/fetchProfile', post.value.authorId);
-      console.log('PostDetails.vue - Профиль автора загружен:', authorProfile);
+      await store.dispatch('profile/fetchProfile', post.value.authorId);
     }
 
-    console.log('PostDetails.vue - Загрузка комментариев для postId:', postId.value);
     await store.dispatch('comments/fetchComments', postId.value);
-    console.log('PostDetails.vue - Комментарии загружены:', comments.value);
-    store.dispatch('pagination/setTotalItems', comments.value.length);
+    store.dispatch('pagination/setTotalItems', post.value.commentsCount || 0);
 
     const currentUserData = store.state.auth.user;
     if (currentUserData && post.value.authorId === currentUserData.uid) {
-      console.log('PostDetails.vue - Запуск слушателя уведомлений для владельца поста:', postId.value);
-      try {
-        await store.dispatch('notifications/startListeningNotifications', postId.value);
-      } catch (error) {
-        console.error('PostDetails.vue - Ошибка при запуске слушателя уведомлений:', error);
-      }
+      await store.dispatch('notifications/startListeningNotifications', postId.value);
     }
   } catch (error) {
     console.error('PostDetails.vue - Ошибка загрузки:', error);
-    toast.error(error.message || 'Ошибка при загрузке поста или комментариев');
+    toast.error(error.message || 'Ошибка при загрузке поста');
     post.value = null;
   } finally {
     isLoading.value = false;
@@ -371,7 +323,6 @@ onMounted(() => {
 
 watch(() => route.params.id, (newId, oldId) => {
   if (newId !== oldId) {
-    console.log('PostDetails.vue - Изменение postId в маршруте:', newId);
     loadPostData();
   }
 });
@@ -389,12 +340,7 @@ onBeforeUnmount(() => {
 
   const currentUser = store.state.auth.user;
   if (postId.value && currentUser && post.value?.authorId === currentUser.uid) {
-    console.log('PostDetails.vue - Остановка слушателя уведомлений для postId:', postId.value);
-    try {
-      store.dispatch('notifications/stopListeningNotifications', postId.value);
-    } catch (error) {
-      console.error('PostDetails.vue - Ошибка при остановке слушателя уведомлений:', error);
-    }
+    store.dispatch('notifications/stopListeningNotifications', postId.value);
   }
 });
 
@@ -409,7 +355,6 @@ const handleLike = async () => {
   try {
     const updatedPost = await store.dispatch('posts/toggleLike', post.value.id);
     post.value = updatedPost || post.value;
-    console.log('PostDetails.vue - Лайк обновлен:', post.value.likesCount);
   } catch (error) {
     toast.error('Не удалось поставить лайк');
     console.error('PostDetails.vue - Ошибка при переключении лайка:', error);
@@ -422,10 +367,6 @@ const toggleFavorite = async () => {
     toast.warning('Пожалуйста, войдите в систему, чтобы добавить в избранное');
     return;
   }
-  if (!postId.value) {
-    toast.error('ID поста не найден');
-    return;
-  }
   try {
     await store.dispatch('favorites/toggleFavorite', { 
       postId: postId.value, 
@@ -433,7 +374,6 @@ const toggleFavorite = async () => {
     });
     await store.dispatch('favorites/fetchFavoritePosts');
     toast.success(isFavorite.value ? 'Добавлено в избранное' : 'Удалено из избранного');
-    console.log('PostDetails.vue - Статус избранного обновлен:', isFavorite.value);
   } catch (error) {
     console.error('PostDetails.vue - Ошибка при переключении избранного:', error);
     toast.error('Не удалось обновить избранное');
@@ -541,8 +481,21 @@ const submitComment = async () => {
       createdAt: Date.now(),
     };
 
-    console.log('PostDetails.vue - Отправка комментария:', commentData);
     await store.dispatch('comments/addComment', commentData);
+
+    const db = getDatabase();
+    const postRefGlobal = dbRef(db, `posts/${postId.value}`);
+    const postRefCategory = dbRef(db, `categories/${post.value.categoryId}/posts/${postId.value}`);
+
+    const postSnapshot = await get(postRefGlobal);
+    const currentCommentsCount = postSnapshot.exists() ? (postSnapshot.val().commentsCount || 0) : 0;
+    const newCommentsCount = currentCommentsCount + 1;
+
+    const updates = { commentsCount: newCommentsCount };
+    await update(postRefGlobal, updates);
+    await update(postRefCategory, updates);
+
+    post.value.commentsCount = newCommentsCount;
 
     commentContent.value = '';
     imageFile.value = null;
@@ -560,16 +513,13 @@ const submitComment = async () => {
 
 const handlePageChange = (page) => {
   store.dispatch('pagination/setCurrentPage', page);
-  console.log('PostDetails.vue - Смена страницы пагинации:', page);
 };
 
 const handleAvatarError = (event) => {
-  console.log('PostDetails.vue - Ошибка загрузки аватара');
   event.target.src = '/image/empty_avatar.png';
 };
 
 const handleImageError = (event) => {
-  console.log('PostDetails.vue - Ошибка загрузки изображения');
   event.target.src = '/image/error-placeholder.png';
 };
 

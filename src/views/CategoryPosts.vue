@@ -168,16 +168,12 @@ onMounted(async () => {
       
       const postsRef = dbRef(db, `categories/${categoryId}/posts`);
       unsubscribe = onValue(postsRef, async (snapshot) => {
-        console.log('Snapshot из onValue:', snapshot.val());
         loadingProgress.value = 80;
         if (snapshot.exists()) {
           const postsData = snapshot.val();
           const currentUserId = store.state.auth.user?.uid || localStorage.getItem('userId');
-          console.log('[CategoryPosts] Current user ID:', currentUserId);
 
           const postsArray = await Promise.all(Object.entries(postsData).map(async ([id, post]) => {
-            console.log('[CategoryPosts] Post:', { id, post });
-
             let authorName = post.authorName || 'Гость';
             let authorAvatar = post.authorAvatar || '/image/empty_avatar.png';
             let authorRole = 'New User';
@@ -185,29 +181,19 @@ onMounted(async () => {
             if (post.authorId && post.authorId !== currentUserId) {
               try {
                 let authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
-                console.log('[CategoryPosts] Profile from cache for authorId:', post.authorId, authorProfile);
-
-                if ((!authorProfile || !store.state.profile.profilesCache[post.authorId]) && post.authorId !== currentUserId) {
-                  console.log('[CategoryPosts] Profile not in cache, fetching for authorId:', post.authorId);
+                if (!authorProfile) {
                   await store.dispatch('profile/fetchProfile', post.authorId);
                   authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
-                  console.log('[CategoryPosts] Profile fetched for authorId:', post.authorId, authorProfile);
                 }
-
                 if (authorProfile) {
                   authorName = post.authorName || authorProfile.username || 'Гость';
                   authorAvatar = post.authorAvatar || authorProfile.avatarUrl || '/image/empty_avatar.png';
                   authorRole = authorProfile.role || 'New User';
-                } else {
-                  console.warn('[CategoryPosts] No profile data returned for authorId:', post.authorId);
                 }
-
-                console.log('[CategoryPosts] Final author data:', { postId: id, authorId: post.authorId, authorName, authorAvatar, authorRole });
               } catch (error) {
-                console.error('[CategoryPosts] Failed to fetch profile for authorId:', post.authorId, error);
+                console.error('[CategoryPosts] Failed to fetch profile:', error);
               }
             } else if (post.authorId === currentUserId) {
-              // Для текущего пользователя берем данные из auth
               authorName = store.getters['auth/getUsername'];
               authorAvatar = store.getters['auth/getUserAvatar'];
               authorRole = store.getters['auth/userRole'] || 'New User';
@@ -216,7 +202,7 @@ onMounted(async () => {
             const likes = post.likes || {};
             const isLiked = currentUserId && likes[currentUserId] ? true : false;
             const likesCount = Object.keys(likes).length;
-            const commentsCount = post.comments ? Object.keys(post.comments).length : 0;
+            const commentsCount = post.commentsCount || 0;
 
             return {
               id,
@@ -227,48 +213,21 @@ onMounted(async () => {
               tags: Array.isArray(post.tags) ? post.tags : (post.tags ? [post.tags] : ['форум']),
               likes,
               likesCount,
-              comments: post.comments || {},
               commentsCount,
               views: post.views || 0,
               createdAt: post.createdAt || 0,
               isLiked
             };
           }));
-
           posts.value = postsArray;
-          store.dispatch('pagination/setTotalItems', postsArray.length);
-          store.dispatch('pagination/setItemsPerPage', itemsPerPage);
-          console.log('[CategoryPosts] Posts updated:', postsArray);
-
-          const authorIds = postsArray.map(post => post.authorId);
-          const uniqueAuthorIds = new Set(authorIds);
-          console.log('[Debug] All authorIds in posts:', authorIds);
-          console.log('[Debug] Unique authorIds count:', uniqueAuthorIds.size, 'Total posts:', postsArray.length);
-          if (uniqueAuthorIds.size < postsArray.length) {
-            console.warn('[Debug] Duplicate authorIds detected!');
-          }
-
           loadingProgress.value = 100;
-        } else {
-          posts.value = [];
-          store.dispatch('pagination/setTotalItems', 0);
         }
-        setTimeout(() => {
-          isLoading.value = false;
-          loadingProgress.value = 0;
-        }, 500);
-      }, (error) => {
-        console.error('Ошибка в подписке onValue:', error);
         isLoading.value = false;
-        loadingProgress.value = 0;
       });
-    } else {
-      throw new Error('Категория не найдена');
     }
   } catch (error) {
-    console.error('Ошибка при загрузке данных:', error);
+    console.error('Error loading posts:', error);
     isLoading.value = false;
-    loadingProgress.value = 0;
   }
 });
 
@@ -277,22 +236,16 @@ onUnmounted(() => {
 });
 
 const sortedPosts = computed(() => {
-  return [...posts.value].sort((a, b) => {
-    const aTime = typeof a.createdAt === 'string' ? new Date(a.createdAt).getTime() : a.createdAt;
-    const bTime = typeof b.createdAt === 'string' ? new Date(b.createdAt).getTime() : b.createdAt;
-    return bTime - aTime;
-  });
+  return [...posts.value].sort((a, b) => b.createdAt - a.createdAt);
 });
 
 const pagedPosts = computed(() => {
-  const result = store.getters['pagination/getPagedItems'](sortedPosts.value);
-  console.log('Paged posts:', result);
-  return result;
+  return store.getters['pagination/getPagedItems'](sortedPosts.value);
 });
 
 const formatDate = (timestamp) => {
   if (!timestamp) return 'Неизвестно';
-  const date = typeof timestamp === 'string' ? new Date(timestamp) : new Date(timestamp);
+  const date = new Date(timestamp);
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
@@ -304,36 +257,25 @@ const toggleLike = async (postId) => {
   try {
     isLoadingLikes.value = true;
     const currentUserId = store.state.auth.user?.uid || localStorage.getItem('userId');
-    if (!currentUserId) throw new Error('Пользователь не авторизован');
-
     const db = getDatabase();
     const postRefGlobal = dbRef(db, `posts/${postId}`);
     const postRefCategory = dbRef(db, `categories/${categoryId}/posts/${postId}`);
 
-    // Получаем текущие данные из Firebase
-    const postSnapshotGlobal = await get(postRefGlobal);
     const postSnapshotCategory = await get(postRefCategory);
+    if (!postSnapshotCategory.exists()) throw new Error('Пост не найден');
 
-    if (!postSnapshotGlobal.exists() || !postSnapshotCategory.exists()) {
-      throw new Error('Пост не найден');
-    }
-
-    const postDataGlobal = postSnapshotGlobal.val();
-    const postDataCategory = postSnapshotCategory.val();
-    const likes = postDataCategory.likes || {};
-    const currentLikesCount = Object.keys(likes).length;
-    const isLiked = likes[currentUserId] ? true : false;
-
-    // Обновляем лайки
-    const newLikesCount = isLiked ? currentLikesCount - 1 : currentLikesCount + 1;
+    const postData = postSnapshotCategory.val();
+    const likes = postData.likes || {};
+    const isLiked = !!likes[currentUserId];
     const updatedLikes = { ...likes };
+    const newLikesCount = isLiked ? Object.keys(likes).length - 1 : Object.keys(likes).length + 1;
+
     if (isLiked) {
       delete updatedLikes[currentUserId];
     } else {
       updatedLikes[currentUserId] = true;
     }
 
-    // Обновляем оба пути в Firebase
     const updates = {
       likes: updatedLikes,
       likesCount: newLikesCount
@@ -341,7 +283,6 @@ const toggleLike = async (postId) => {
     await update(postRefGlobal, updates);
     await update(postRefCategory, updates);
 
-    // Обновляем локальное состояние
     const postIndex = posts.value.findIndex(p => p.id === postId);
     if (postIndex !== -1) {
       posts.value[postIndex] = {
@@ -351,8 +292,6 @@ const toggleLike = async (postId) => {
         isLiked: !isLiked
       };
     }
-
-    console.log('[CategoryPosts] Лайк обновлен:', { postId, likes: updatedLikes, likesCount: newLikesCount });
   } catch (error) {
     console.error('Ошибка при переключении лайка:', error);
     alert(error.message);
@@ -366,10 +305,7 @@ const incrementPostViews = async (postId) => {
     const updatedPost = await store.dispatch('posts/incrementViews', postId);
     const postIndex = posts.value.findIndex(p => p.id === postId);
     if (postIndex !== -1) {
-      posts.value[postIndex] = {
-        ...posts.value[postIndex],
-        views: updatedPost.views
-      };
+      posts.value[postIndex].views = updatedPost.views;
     }
   } catch (error) {
     console.error('Ошибка при обновлении просмотров:', error);
