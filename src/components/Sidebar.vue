@@ -22,7 +22,7 @@
         <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white"></div>
       </div>
       <h3 class="mt-4 text-xl font-semibold text-white">{{ userName }}</h3>
-      <p class="text-purple-200/70 text-sm mt-1">{{ signature }}</p>
+      <p class="text-xs text-gray-300">{{ userRole }}</p> <!-- Изменено на userRole для реактивности -->
     </div>
 
     <!-- Navigation -->
@@ -80,43 +80,46 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useStore } from 'vuex'
-import { auth } from '../plugins/firebase'
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { useStore } from 'vuex';
+import { auth } from '../plugins/firebase';
 
-const router = useRouter()
-const store = useStore()
-const isCollapsed = ref(true)
-const isLoading = ref(false)
+const router = useRouter();
+const store = useStore();
+const isCollapsed = ref(true);
+const isLoading = ref(false);
 
 // Получаем данные из profile store
-const userProfile = computed(() => store.getters['profile/getProfile'])
-const avatarSrc = ref('/image/empty_avatar.png') // Устанавливаем начальное значение
-const userName = computed(() => store.getters['profile/username'] || 'Гость')
-const signature = computed(() => store.getters['profile/signature'] || '')
-const isAuthenticated = computed(() => store.getters['auth/isAuthenticated'])
+const userProfile = computed(() => store.getters['profile/getProfile']);
+const avatarSrc = ref('/image/empty_avatar.png'); // Устанавливаем начальное значение
+const userName = computed(() => store.getters['profile/username'] || 'Гость');
+const signature = computed(() => store.getters['profile/signature'] || '');
+const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
+
+// Добавляем реактивное получение роли из Vuex
+const userRole = computed(() => store.getters['profile/getRole'] || 'New User');
 
 // Обработчик ошибки загрузки аватара
 const handleAvatarError = () => {
-  avatarSrc.value = '/image/empty_avatar.png'
-}
+  avatarSrc.value = '/image/empty_avatar.png';
+};
 
 // Следим за изменением аватара
 watch(
   () => store.getters['profile/userAvatar'],
   (newAvatar) => {
-    avatarSrc.value = newAvatar || '/image/empty_avatar.png'
+    avatarSrc.value = newAvatar || '/image/empty_avatar.png';
   },
   { immediate: true }
-)
+);
 
 const menuItems = [
   { text: 'Последние темы', icon: 'fa-clock', link: '#' },
   { text: 'Популярные обсуждения', icon: 'fa-fire', link: '#' },
   { text: 'Рекомендации аниме', icon: 'fa-star', link: '#' },
   { text: 'Сезонные аниме', icon: 'fa-calendar', link: '#' }
-]
+];
 
 const toggleSidebar = () => {
   isCollapsed.value = !isCollapsed.value;
@@ -132,6 +135,7 @@ async function logout() {
       username: 'Гость',
       avatarUrl: '/image/empty_avatar.png',
       signature: '',
+      role: 'New User', // Добавляем сброс роли
       settings: {
         profileVisibility: true,
         notifyMessages: true,
@@ -187,6 +191,20 @@ const navigateToProfile = () => {
 const goToMainPage = () => {
   router.push({ path: '/' });
 };
+
+// Загружаем профиль при монтировании, если пользователь авторизован
+onMounted(async () => {
+  if (isAuthenticated.value) {
+    const userId = store.state.auth.user?.uid || localStorage.getItem('userId');
+    if (userId) {
+      try {
+        await store.dispatch('profile/fetchProfile', userId);
+      } catch (error) {
+        console.error('Ошибка при загрузке профиля:', error);
+      }
+    }
+  }
+});
 </script>
 
 <style scoped>
