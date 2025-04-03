@@ -203,7 +203,7 @@ onMounted(async () => {
             const isLiked = currentUserId && likes[currentUserId] ? true : false;
             const likesCount = Object.keys(likes).length;
             const commentsCount = post.commentsCount || 0;
-            const views = post.views || 0; // Добавляем views из Firebase
+            const views = post.views || 0;
 
             return {
               id,
@@ -215,7 +215,7 @@ onMounted(async () => {
               likes,
               likesCount,
               commentsCount,
-              views, // Убедимся, что views включен
+              views,
               createdAt: post.createdAt || 0,
               isLiked
             };
@@ -236,8 +236,13 @@ onUnmounted(() => {
   if (unsubscribe) unsubscribe();
 });
 
+// Сортировка постов по убыванию createdAt (последние сверху)
 const sortedPosts = computed(() => {
-  return [...posts.value].sort((a, b) => b.createdAt - a.createdAt);
+  return [...posts.value].sort((a, b) => {
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dateB - dateA; // Сортировка от последнего к первому
+  });
 });
 
 const pagedPosts = computed(() => {

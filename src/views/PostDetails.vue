@@ -118,7 +118,7 @@
             <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Комментарии</h2>
             <span class="text-sm font-medium text-gray-500 dark:text-gray-400">({{ totalComments }})</span>
           </div>
-          <Comments :post-id="postId" :current-page="currentPage" :items-per-page="itemsPerPage" />
+          <Comments :post-id="postId" :comments="pagedComments" />
           <Pagination :total-items="totalComments" :items-per-page="itemsPerPage" :current-page="currentPage" @page-changed="handlePageChange" />
         </div>
 
@@ -222,10 +222,17 @@ const post = ref(null);
 const isLoading = ref(true);
 
 const postId = computed(() => route.params.id);
-const comments = computed(() => store.getters['comments/getComments'] || []);
+const allComments = computed(() => store.getters['comments/getComments'] || []);
 const currentPage = computed(() => store.getters['pagination/getCurrentPage']);
 const itemsPerPage = ref(10);
 const totalComments = computed(() => post.value?.commentsCount || 0);
+
+// Вычисляем комментарии для текущей страницы
+const pagedComments = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value;
+  const end = start + itemsPerPage.value;
+  return allComments.value.slice(start, end);
+});
 
 const MAX_CHARS = 333;
 const remainingChars = computed(() => MAX_CHARS - (commentContent.value?.length || 0));
@@ -496,6 +503,10 @@ const submitComment = async () => {
     await update(postRefCategory, updates);
 
     post.value.commentsCount = newCommentsCount;
+
+    // Перезагрузка комментариев после добавления нового
+    await store.dispatch('comments/fetchComments', postId.value);
+    store.dispatch('pagination/setTotalItems', newCommentsCount);
 
     commentContent.value = '';
     imageFile.value = null;

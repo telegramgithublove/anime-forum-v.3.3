@@ -3,9 +3,9 @@
     <div v-if="isLoading" class="text-center py-12">
       <p class="text-gray-500 dark:text-gray-400">{{ t('loadingComments') }}</p>
     </div>
-    <div v-else-if="sortedComments.length" class="space-y-6">
+    <div v-else-if="comments.length" class="space-y-6">
       <div
-        v-for="comment in sortedComments"
+        v-for="comment in comments"
         :key="comment.id"
         class="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 hover:shadow-lg transition duration-300"
       >
@@ -169,22 +169,22 @@ import ReplyForm from './ReplyForm.vue';
 
 const props = defineProps({
   postId: { type: [String, Number], required: true },
+  comments: { type: Array, default: () => [] }, // Пропс для получения комментариев текущей страницы
 });
 
 const { t } = useI18n();
 const store = useStore();
 
 const isLoading = computed(() => store.getters['comments/isLoading'] || store.getters['reply/isLoading']);
-const comments = computed(() => store.getters['comments/getComments'] || []);
 const replies = computed(() => store.getters['reply/getReplies'] || {});
 const activeReplyForm = ref(null);
 const isLoadingLikes = ref(false);
 
-const sortedComments = computed(() => {
-  return [...comments.value].sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
-});
-
 const currentUserId = computed(() => store.state.auth.user?.uid || null);
+
+// Используем пропс comments вместо sortedComments из Vuex
+// Убираем сортировку, так как пагинация уже управляется в PostDetails.vue
+const displayedComments = computed(() => props.comments);
 
 const getAuthor = (authorId) => {
   if (!authorId || authorId === 'unknown') {
@@ -196,9 +196,9 @@ const getAuthor = (authorId) => {
   }
   const profileData = store.getters['profile/getProfileByUserId'](authorId);
   return {
-    username: profileData.username || `User_${authorId.slice(0, 6)}`,
-    avatarUrl: profileData.avatarUrl || '/image/empty_avatar.png',
-    role: profileData.role || 'New User',
+    username: profileData?.username || `User_${authorId.slice(0, 6)}`,
+    avatarUrl: profileData?.avatarUrl || '/image/empty_avatar.png',
+    role: profileData?.role || 'New User',
   };
 };
 
@@ -214,7 +214,7 @@ const formatDate = (timestamp) => {
 };
 
 const isLikedByUser = (commentId) => {
-  const comment = comments.value.find((c) => c.id === commentId);
+  const comment = props.comments.find((c) => c.id === commentId);
   return comment?.likes?.[currentUserId.value] || false;
 };
 
@@ -233,7 +233,7 @@ const toggleCommentLike = async (commentId) => {
   }
   try {
     isLoadingLikes.value = true;
-    const comment = comments.value.find((c) => c.id === commentId);
+    const comment = props.comments.find((c) => c.id === commentId);
     const liked = !isLikedByUser(commentId);
     await store.dispatch('comments/toggleCommentLike', {
       postId: props.postId,
@@ -241,6 +241,8 @@ const toggleCommentLike = async (commentId) => {
       userId: currentUserId.value,
       liked,
     });
+    // Перезагружаем комментарии после изменения лайка
+    await store.dispatch('comments/fetchComments', props.postId);
   } catch (error) {
     console.error('Ошибка лайка комментария:', error);
   } finally {
@@ -272,13 +274,15 @@ const toggleReplyForm = (commentId) => {
   activeReplyForm.value = activeReplyForm.value === commentId ? null : commentId;
 };
 
-const handleReplyAdded = (newReply) => {
+const handleReplyAdded = async (newReply) => {
   const commentId = activeReplyForm.value;
   const currentReplies = replies.value[commentId] || [];
   if (!currentReplies.some((reply) => reply.id === newReply.id)) {
     store.commit('reply/SET_REPLIES', { commentId, replies: [...currentReplies, newReply] });
   }
   activeReplyForm.value = null;
+  // Перезагружаем комментарии, чтобы обновить общее количество
+  await store.dispatch('comments/fetchComments', props.postId);
 };
 
 onMounted(async () => {
@@ -289,8 +293,8 @@ onMounted(async () => {
     await store.dispatch('profile/fetchProfile', currentUserId.value);
   }
 
-  await store.dispatch('comments/fetchComments', props.postId);
-  const uniqueAuthorIds = [...new Set(comments.value.map((c) => c.authorId).filter((id) => id && id !== 'unknown'))];
+  // Загружаем профили авторов комментариев
+  const uniqueAuthorIds = [...new Set(props.comments.map((c) => c.authorId).filter((id) => id && id !== 'unknown'))];
   await Promise.all(
     uniqueAuthorIds.map((authorId) =>
       store.dispatch('profile/fetchProfile', authorId).catch((error) =>
@@ -298,10 +302,15 @@ onMounted(async () => {
       )
     )
   );
+
+  // Загружаем ответы для комментариев текущей страницы
+  props.comments.forEach((comment) => {
+    store.dispatch('reply/fetchReplies', { postId: props.postId, commentId: comment.id });
+  });
 });
 
 watch(
-  () => sortedComments.value,
+  () => props.comments,
   async (newComments) => {
     if (newComments.length && props.postId) {
       const uniqueAuthorIds = [...new Set(newComments.map((c) => c.authorId).filter((id) => id && id !== 'unknown'))];
@@ -321,7 +330,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  store.dispatch('comments/clearComments');
+  // Не очищаем все комментарии, так как они управляются в PostDetails.vue
 });
 
 const handleAvatarError = (event) => {

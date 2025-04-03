@@ -442,6 +442,7 @@ const imageInput = ref(null);
 const videoInput = ref(null);
 const audioInput = ref(null);
 const formatInput = ref(null);
+const fileInput = ref(null);
 
 const postTitle = ref('');
 const postContent = ref('');
@@ -462,7 +463,7 @@ const remainingTitleCharacters = computed(() => Math.max(0, 33 - (postTitle.valu
 
 const isFormValid = computed(() => {
   const titleValid = postTitle.value.trim().length > 0;
-  const contentValid = postContent.value.length > 0;
+  const contentValid = postContent.value.trim().length > 0;
   return titleValid && contentValid;
 });
 
@@ -590,8 +591,10 @@ const removeFormat = (index) => {
 
 // Обработчики для форматирования и ввода
 const applyFormat = (format) => {
-  document.execCommand(format, false, null);
-  editor.value.focus();
+  if (editor.value) {
+    document.execCommand(format, false, null);
+    editor.value.focus();
+  }
 };
 
 const handleInput = (event) => {
@@ -620,14 +623,16 @@ const openEmojiPicker = (event) => {
 };
 
 const handleEmojiSelect = (emoji) => {
-  const selection = window.getSelection();
-  const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : document.createRange();
-  range.insertNode(document.createTextNode(emoji));
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
-  postContent.value = editor.value.innerHTML;
-  editor.value.focus();
+  if (editor.value) {
+    const selection = window.getSelection();
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : document.createRange();
+    range.insertNode(document.createTextNode(emoji));
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    postContent.value = editor.value.innerHTML;
+    editor.value.focus();
+  }
 };
 
 // Валидация и отправка
@@ -635,6 +640,12 @@ const validateAndSubmit = async () => {
   showValidation.value = true;
   if (!isFormValid.value) {
     toast.error('Заполните заголовок и содержание');
+    return;
+  }
+
+  if (!editor.value) {
+    console.error('[CreatePost] Ошибка: редактор не инициализирован');
+    toast.error('Ошибка: текстовый редактор не загрузился');
     return;
   }
 
@@ -735,6 +746,9 @@ onUnmounted(() => {
 
 onMounted(() => {
   console.log('Компонент CreatePost смонтирован');
+  if (!editor.value) {
+    console.warn('[CreatePost] Предупреждение: элемент editor не найден при монтировании');
+  }
 });
 
 const handleImageLoad = () => console.log('Изображение загружено');
