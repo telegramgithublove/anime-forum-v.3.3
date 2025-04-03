@@ -35,6 +35,7 @@ import SendEmailVerification from '../views/auth/SendEmailVerification.vue'
 import EmailVerificationHandler from '../views/auth/EmailVerificationHandler.vue'
 import Notifications from '../views/Notifications.vue'
 import CreatePost from '../views/CreatePost.vue'
+import DiscussedPosts from '../views/DiscussedPosts.vue'
 
 // Используем динамический импорт для Profile и CategoryList
 const Profile = () => import('../views/profile/Profile.vue')
@@ -250,12 +251,12 @@ const routes = [
   }
 },
 {
-  path: '/popular-posts', // Добавляем "s" для соответствия URL
-  name: 'PopularPosts.vue',
-  component: PopularPosts,
+  path: '/most-discussed-posts', // Добавляем "s" для соответствия URL
+  name: 'DiscussedPosts.vue',
+  component: DiscussedPosts,
   meta: { 
     requiresAuth: true,
-    title: 'Популярные посты' 
+    title: 'Отвеченные посты' 
 }
 },
   {
