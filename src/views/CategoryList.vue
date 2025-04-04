@@ -58,56 +58,64 @@
 </template>
 
 <script>
-import { computed, onMounted } from 'vue'
-import { useStore } from 'vuex'
-import { useRouter } from 'vue-router'
-import { format } from 'date-fns'
-import { ru } from 'date-fns/locale'
+import { computed, onMounted } from 'vue';
+import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 export default {
   name: 'CategoryList',
   
   setup() {
-    const store = useStore()
-    const router = useRouter()
+    const store = useStore();
+    const router = useRouter();
 
-    // Получаем категории из store
-    const categories = computed(() => store.getters['categories/getAllCategories'])
-    const loading = computed(() => store.state.categories.loading)
-    const error = computed(() => store.state.categories.error)
+    const categories = computed(() => {
+      const cats = store.getters['categories/getAllCategories'];
+      console.log('CategoryList.vue: Получены категории из геттера:', cats);
+      cats.forEach(cat => {
+        console.log(`Категория ${cat.name}: topicsCount = ${cat.topicsCount}, posts =`, cat.posts);
+      });
+      return cats;
+    });
+    const loading = computed(() => store.state.categories.loading);
+    const error = computed(() => store.state.categories.error);
 
     const getCategoryTypeName = (type) => {
       const types = {
         default: 'Обычная',
         announcement: 'Объявления',
         discussion: 'Обсуждения',
-        help: 'Помощь'
-      }
-      return types[type] || type
-    }
+        help: 'Помощь',
+      };
+      return types[type] || type;
+    };
 
     const formatDate = (timestamp) => {
-      if (!timestamp) return 'Нет активности'
-      return format(new Date(timestamp), 'dd MMM yyyy HH:mm', { locale: ru })
-    }
+      if (!timestamp) return 'Нет активности';
+      return format(new Date(timestamp), 'dd MMM yyyy HH:mm', { locale: ru });
+    };
 
     const navigateToCategory = (category) => {
       if (category && category.id) {
+        console.log('CategoryList.vue: Переход к категории:', category.id);
         router.push({
           name: 'CategoryPosts',
-          params: { categoryId: category.id }
-        })
+          params: { categoryId: category.id },
+        });
       }
-    }
+    };
 
-    // Загружаем категории при монтировании компонента
     onMounted(async () => {
+      console.log('CategoryList.vue: Монтирование компонента');
       try {
-        await store.dispatch('categories/fetchCategories')
+        await store.dispatch('categories/fetchCategories');
+        console.log('CategoryList.vue: Категории загружены');
       } catch (error) {
-        console.error('Ошибка при загрузке категорий:', error)
+        console.error('CategoryList.vue: Ошибка при загрузке категорий:', error);
       }
-    })
+    });
 
     return {
       categories,
@@ -115,10 +123,10 @@ export default {
       error,
       getCategoryTypeName,
       formatDate,
-      navigateToCategory
-    }
-  }
-}
+      navigateToCategory,
+    };
+  },
+};
 </script>
 
 <style scoped>

@@ -14,27 +14,30 @@ export default {
   mutations: {
     SET_CATEGORIES(state, categories) {
       console.log('categories.js: Установка категорий в состояние:', categories);
-      state.categories = { ...categories }; // Гарантируем реактивность
+      state.categories = { ...categories };
     },
     SET_LOADING(state, loading) {
+      console.log('categories.js: Установка состояния загрузки:', loading);
       state.loading = loading;
     },
     SET_ERROR(state, error) {
+      console.log('categories.js: Установка ошибки:', error);
       state.error = error;
     },
     SET_UNSUBSCRIBE(state, unsubscribe) {
+      console.log('categories.js: Установка отписки:', unsubscribe);
       state.unsubscribe = unsubscribe;
     },
   },
 
   actions: {
     async fetchCategories({ commit, state }) {
+      console.log('categories.js: Начало загрузки категорий');
       commit('SET_LOADING', true);
       try {
         const db = getDatabase();
         const categoriesRef = dbRef(db, 'categories');
 
-        // Отписываемся от предыдущего слушателя, если он существует
         if (state.unsubscribe) {
           state.unsubscribe();
           console.log('categories.js: Отписка от предыдущего слушателя выполнена');
@@ -42,16 +45,32 @@ export default {
 
         const unsubscribe = onValue(
           categoriesRef,
-          (snapshot) => {
+          async (snapshot) => {
             if (snapshot.exists()) {
               const categoriesData = snapshot.val();
               console.log('categories.js: Данные категорий из Firebase:', categoriesData);
-              commit('SET_CATEGORIES', categoriesData);
+
+              const updatedCategories = {};
+              for (const [id, category] of Object.entries(categoriesData)) {
+                // Используем posts вместо postIds
+                const posts = category.posts ? Object.keys(category.posts) : [];
+                const topicsCount = posts.length;
+                console.log(`categories.js: Подсчет тем для категории ${id}:`, topicsCount);
+
+                updatedCategories[id] = {
+                  ...category,
+                  id,
+                  topicsCount, // Обновляем topicsCount на основе количества постов
+                };
+              }
+
+              console.log('categories.js: Обновленные категории перед коммитом:', updatedCategories);
+              commit('SET_CATEGORIES', updatedCategories);
             } else {
               console.log('categories.js: Категории не найдены в Firebase');
               commit('SET_CATEGORIES', {});
             }
-            commit('SET_LOADING', false); // Завершаем загрузку после получения данных
+            commit('SET_LOADING', false);
           },
           (error) => {
             console.error('categories.js: Ошибка подписки на категории:', error);
@@ -70,26 +89,28 @@ export default {
     },
 
     async fetchCategoryPostIds({ commit }, categoryId) {
+      console.log('categories.js: Запрос постов для категории:', categoryId);
       try {
         const db = getDatabase();
-        const postIdsRef = dbRef(db, `categories/${categoryId}/postIds`);
-        const snapshot = await get(postIdsRef);
+        const postsRef = dbRef(db, `categories/${categoryId}/posts`); // Изменено на posts
+        const snapshot = await get(postsRef);
         if (snapshot.exists()) {
           const postIds = Object.keys(snapshot.val());
-          console.log('categories.js: Загружены postIds для категории:', categoryId, postIds);
+          console.log('categories.js: Загружены ID постов для категории:', categoryId, postIds);
           return postIds;
         } else {
           console.log('categories.js: Посты не найдены для категории:', categoryId);
           return [];
         }
       } catch (error) {
-        console.error('categories.js: Ошибка при загрузке postIds:', error);
+        console.error('categories.js: Ошибка при загрузке постов:', error);
         commit('SET_ERROR', error.message);
         throw error;
       }
     },
 
     clearSubscription({ commit, state }) {
+      console.log('categories.js: Очистка подписки');
       if (state.unsubscribe) {
         state.unsubscribe();
         commit('SET_UNSUBSCRIBE', null);
@@ -100,21 +121,29 @@ export default {
 
   getters: {
     getAllCategories: (state) => {
-      const categoriesArray = Object.entries(state.categories || {}).map(([id, data]) => ({
-        id,
-        ...data,
-        postIds: data.postIds ? Object.keys(data.postIds) : [], // Преобразуем postIds в массив
-      }));
+      const categoriesArray = Object.entries(state.categories || {}).map(([id, data]) => {
+        const posts = data.posts ? Object.keys(data.posts) : []; // Изменено на posts
+        const topicsCount = data.topicsCount !== undefined ? data.topicsCount : posts.length;
+        return {
+          id,
+          ...data,
+          posts, // Оставляем posts вместо postIds
+          topicsCount,
+        };
+      });
       console.log('categories.js: Геттер getAllCategories возвращает:', categoriesArray);
       return categoriesArray;
     },
     getCategoryById: (state) => (id) => {
       const category = state.categories[id] || null;
-      if (category && category.postIds) {
-        category.postIds = Object.keys(category.postIds); // Преобразуем postIds в массив
+      if (category) {
+        const posts = category.posts ? Object.keys(category.posts) : []; // Изменено на posts
+        const topicsCount = category.topicsCount !== undefined ? category.topicsCount : posts.length;
+        console.log('categories.js: Геттер getCategoryById для id:', id, 'возвращает:', { ...category, posts, topicsCount });
+        return { ...category, posts, topicsCount };
       }
-      console.log('categories.js: Геттер getCategoryById для id:', id, 'возвращает:', category);
-      return category;
+      console.log('categories.js: Категория с id:', id, 'не найдена');
+      return null;
     },
   },
 };
