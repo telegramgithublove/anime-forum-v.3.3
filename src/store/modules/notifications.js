@@ -1,8 +1,9 @@
+// notifications.js
 import { ref as databaseRef, set, get, onValue, push, update, off } from 'firebase/database';
 import { database } from '../../plugins/firebase';
 
 const state = {
-  notifications: [], // Изменено с comments на notifications
+  notifications: [],
   isLoading: false,
   error: null,
   unsubscribe: null,
@@ -10,19 +11,32 @@ const state = {
 };
 
 const mutations = {
-  SET_NOTIFICATIONS(state, notifications) { // Изменено с SET_COMMENTS
+  SET_NOTIFICATIONS(state, notifications) {
+    console.log('notifications.js: Установка уведомлений:', notifications);
     state.notifications = notifications;
   },
+  ADD_NOTIFICATION(state, notification) {
+    console.log('notifications.js: Добавление уведомления в состояние:', notification);
+    state.notifications.unshift(notification);
+  },
+  REMOVE_NOTIFICATION(state, notificationId) {
+    console.log('notifications.js: Удаление уведомления с ID:', notificationId);
+    state.notifications = state.notifications.filter(n => n.id !== notificationId);
+  },
   SET_LOADING(state, isLoading) {
+    console.log('notifications.js: Установка состояния загрузки:', isLoading);
     state.isLoading = isLoading;
   },
   SET_ERROR(state, error) {
+    console.log('notifications.js: Установка ошибки:', error);
     state.error = error;
   },
   SET_UNSUBSCRIBE(state, unsubscribe) {
+    console.log('notifications.js: Установка отписки:', unsubscribe);
     state.unsubscribe = unsubscribe;
   },
-  CLEAR_NOTIFICATIONS(state) { // Изменено с CLEAR_COMMENTS
+  CLEAR_NOTIFICATIONS(state) {
+    console.log('notifications.js: Очистка уведомлений');
     state.notifications = [];
     if (state.unsubscribe) {
       state.unsubscribe();
@@ -32,20 +46,23 @@ const mutations = {
 };
 
 const actions = {
-  async fetchNotifications({ commit, state }, userId) { // Изменено с fetchComments
+  async fetchNotifications({ commit, state }, userId) {
+    console.log('notifications.js: Запрос уведомлений для userId:', userId);
     if (!userId) {
-      console.error('notifications.js: userId не указан для fetchNotifications');
+      console.error('notifications.js: userId не указан');
       commit('SET_ERROR', 'ID пользователя не указан');
       commit('SET_LOADING', false);
       return;
     }
 
     if (state.unsubscribe) {
+      console.log('notifications.js: Отписка от предыдущего слушателя');
       state.unsubscribe();
     }
     commit('SET_LOADING', true);
     try {
       const notificationsRef = databaseRef(database, `notifications/${userId}`);
+      console.log('notifications.js: Установка слушателя для:', `notifications/${userId}`);
       const unsubscribe = onValue(
         notificationsRef,
         (snapshot) => {
@@ -54,14 +71,14 @@ const actions = {
                 id: key,
                 ...value,
                 userId: value.userId || 'unknown',
-              }))
+              })).sort((a, b) => b.timestamp - a.timestamp)
             : [];
-          console.log('notifications.js: Загружены уведомления:', notifications);
+          console.log('notifications.js: Получены уведомления из Firebase:', notifications);
           commit('SET_NOTIFICATIONS', notifications);
           commit('SET_LOADING', false);
         },
         (error) => {
-          console.error('notifications.js: Ошибка в подписке на уведомления:', error);
+          console.error('notifications.js: Ошибка в подписке:', error);
           commit('SET_ERROR', error.message);
           commit('SET_LOADING', false);
         }
@@ -74,9 +91,11 @@ const actions = {
     }
   },
 
-  async addNotification({ commit, rootState }, notificationData) { // Изменено с addComment
+  async addNotification({ commit, rootState }, notificationData) {
+    console.log('notifications.js: Добавление уведомления:', notificationData);
     try {
       const userId = rootState.auth.user?.uid || localStorage.getItem('userId') || 'default';
+      console.log('notifications.js: Текущий userId:', userId);
       if (!userId) throw new Error('Пользователь не авторизован');
 
       const notificationsRef = databaseRef(database, `notifications/${notificationData.userId}`);
@@ -91,9 +110,10 @@ const actions = {
         timestamp: notificationData.timestamp || Date.now(),
       };
 
+      console.log('notifications.js: Сохранение уведомления в Firebase:', notification);
       await set(newNotificationRef, notification);
-      console.log('notifications.js: Уведомление успешно добавлено:', notification);
-      commit('ADD_NOTIFICATION', notification); // Добавляем мутацию для локального обновления
+      console.log('notifications.js: Уведомление успешно сохранено с ID:', newNotificationRef.key);
+      commit('ADD_NOTIFICATION', { id: newNotificationRef.key, ...notification });
     } catch (error) {
       console.error('notifications.js: Ошибка при добавлении уведомления:', error);
       commit('SET_ERROR', error.message);
@@ -101,7 +121,8 @@ const actions = {
     }
   },
 
-  async toggleCommentLike({ commit }, { postId, commentId, userId, liked }) { // Оставлено как есть, но не используется для уведомлений
+  async toggleCommentLike({ commit }, { postId, commentId, userId, liked }) {
+    console.log('notifications.js: Переключение лайка для комментария:', { postId, commentId, userId, liked });
     try {
       const commentRef = databaseRef(database, `posts/${postId}/comments/${commentId}`);
       const snapshot = await get(commentRef);
@@ -119,22 +140,24 @@ const actions = {
         likesCount = Math.max(likesCount - 1, 0);
       }
 
+      console.log('notifications.js: Обновление лайков:', { likes, likesCount });
       await update(commentRef, { likes, likesCount });
-      console.log(`notifications.js: Лайк для комментария ${commentId} обновлен:`, { liked, likesCount });
+      console.log('notifications.js: Лайк обновлен');
     } catch (error) {
       console.error('notifications.js: Ошибка при обновлении лайка:', error);
       throw error;
     }
   },
 
-  clearNotifications({ commit }) { // Изменено с clearComments
+  clearNotifications({ commit }) {
+    console.log('notifications.js: Очистка уведомлений');
     commit('CLEAR_NOTIFICATIONS');
   },
 
-  // Добавлены новые действия для Notifications.vue
   startListeningNotifications({ commit, state, rootState }, postId) {
+    console.log('notifications.js: Начало прослушивания уведомлений для postId:', postId);
     if (state.unsubscribe) {
-      console.log(`notifications.js: Уже подписаны на уведомления для postId ${postId}`);
+      console.log('notifications.js: Уже подписаны на уведомления');
       return;
     }
 
@@ -154,11 +177,11 @@ const actions = {
               ...value,
             })).filter((n) => n.postId === postId)
           : [];
-        console.log(`notifications.js: Уведомления для postId ${postId} обновлены:`, notifications);
+        console.log('notifications.js: Обновлены уведомления для postId:', notifications);
         commit('SET_NOTIFICATIONS', notifications);
       },
       (error) => {
-        console.error(`notifications.js: Ошибка подписки на уведомления для postId ${postId}:`, error);
+        console.error('notifications.js: Ошибка в подписке:', error);
         commit('SET_ERROR', error.message);
       }
     );
@@ -166,18 +189,35 @@ const actions = {
   },
 
   stopListeningNotifications({ commit, state }) {
+    console.log('notifications.js: Остановка прослушивания уведомлений');
     if (state.unsubscribe) {
       state.unsubscribe();
       commit('SET_UNSUBSCRIBE', null);
-      console.log('notifications.js: Отписка от уведомлений выполнена');
+      console.log('notifications.js: Отписка выполнена');
     }
   },
 };
 
 const getters = {
-  getNotifications: (state) => state.notifications, // Изменено с getComments
+  getNotifications: (state) => {
+    console.log('notifications.js: Получение всех уведомлений:', state.notifications);
+    return state.notifications;
+  },
   isLoading: (state) => state.isLoading,
   getError: (state) => state.error,
+  getPagedNotifications: (state) => (page, itemsPerPage) => {
+    console.log('notifications.js: Получение страниц уведомлений:', { page, itemsPerPage });
+    const start = (page - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    const paged = state.notifications.slice(start, end);
+    console.log('notifications.js: Страница уведомлений:', paged);
+    return paged;
+  },
+  getTotalNotifications: (state) => {
+    const total = state.notifications.length;
+    console.log('notifications.js: Общее количество уведомлений:', total);
+    return total;
+  },
 };
 
 export default {

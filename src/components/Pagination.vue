@@ -6,7 +6,7 @@
       class="px-4 py-2 rounded-lg bg-purple-500 text-white disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors duration-300"
     >
       <i class="fas fa-chevron-left mr-2"></i>
-      Назад
+      Back
     </button>
     
     <div class="flex items-center space-x-2">
@@ -32,7 +32,7 @@
       :disabled="currentPage === totalPages"
       class="px-4 py-2 rounded-lg bg-purple-500 text-white disabled:bg-gray-300 disabled:cursor-not-allowed hover:bg-purple-600 transition-colors duration-300"
     >
-      Вперед
+      Forward
       <i class="fas fa-chevron-right ml-2"></i>
     </button>
   </div>
@@ -45,22 +45,18 @@ import { useStore } from 'vuex';
 const props = defineProps({
   totalItems: {
     type: Number,
-    required: true
+    required: true,
   },
   itemsPerPage: {
     type: Number,
-    default: 10
-  }
+    default: 10,
+  },
 });
 
 const store = useStore();
 
 const currentPage = computed(() => store.getters['pagination/getCurrentPage']);
-const totalPages = computed(() => {
-  const total = Math.ceil(props.totalItems / props.itemsPerPage);
-  console.log('Total Pages:', total);
-  return total;
-});
+const totalPages = computed(() => Math.ceil(props.totalItems / props.itemsPerPage));
 
 const displayedPages = computed(() => {
   const pages = [];
