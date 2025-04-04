@@ -34,7 +34,7 @@
           </div>
           <div class="flex justify-between items-center mt-4 text-sm text-gray-500">
             <span>{{ category.topicsCount || 0 }} тем</span>
-            <span>{{ formatDate(category.lastActivity) }}</span>
+            <span>{{ formatDate(category) }}</span>
           </div>
         </div>
       </div>
@@ -74,11 +74,9 @@ export default {
     const categories = computed(() => {
       const cats = store.getters['categories/getAllCategories'];
       console.log('CategoryList.vue: Получены категории из геттера:', cats);
-      cats.forEach(cat => {
-        console.log(`Категория ${cat.name}: topicsCount = ${cat.topicsCount}, posts =`, cat.posts);
-      });
       return cats;
     });
+
     const loading = computed(() => store.state.categories.loading);
     const error = computed(() => store.state.categories.error);
 
@@ -92,9 +90,68 @@ export default {
       return types[type] || type;
     };
 
-    const formatDate = (timestamp) => {
-      if (!timestamp) return 'Нет активности';
-      return format(new Date(timestamp), 'dd MMM yyyy HH:mm', { locale: ru });
+    const determineLastActivity = (category) => {
+      console.log('CategoryList.vue: Определение последней активности для категории:', category.name, category);
+      
+      const timestamps = [];
+      
+      // Добавляем lastActivity категории, если оно есть
+      if (category.lastActivity && !isNaN(Number(category.lastActivity))) {
+        timestamps.push(Number(category.lastActivity));
+      }
+
+      // Проверяем посты
+      if (category.posts && typeof category.posts === 'object') {
+        Object.values(category.posts).forEach(post => {
+          if (post && post.createdAt) {
+            const timestamp = typeof post.createdAt === 'string' 
+              ? Date.parse(post.createdAt) 
+              : Number(post.createdAt);
+            if (!isNaN(timestamp)) {
+              timestamps.push(timestamp);
+            }
+          }
+          // Проверяем комментарии к постам
+          if (post && post.comments && typeof post.comments === 'object') {
+            Object.values(post.comments).forEach(comment => {
+              if (comment && comment.createdAt) {
+                const commentTimestamp = typeof comment.createdAt === 'string' 
+                  ? Date.parse(comment.createdAt) 
+                  : Number(comment.createdAt);
+                if (!isNaN(commentTimestamp)) {
+                  timestamps.push(commentTimestamp);
+                }
+              }
+            });
+          }
+        });
+      }
+
+      console.log('CategoryList.vue: Найденные временные метки для категории', category.name, timestamps);
+      return timestamps.length > 0 ? Math.max(...timestamps) : null;
+    };
+
+    const formatDate = (category) => {
+      console.log('CategoryList.vue: Форматирование даты для категории:', category.name, 'topicsCount:', category.topicsCount);
+      
+      // Если 0 тем, показываем "Нет активности"
+      if (!category.topicsCount || category.topicsCount === 0) {
+        return 'Нет активности';
+      }
+
+      // Ищем последнюю активность
+      const timestamp = determineLastActivity(category);
+      
+      if (!timestamp || isNaN(Number(timestamp))) {
+        return 'Нет активности'; // Это не должно сработать при topicsCount > 0, но оставлено для безопасности
+      }
+
+      try {
+        return format(new Date(Number(timestamp)), 'dd MMM yyyy HH:mm', { locale: ru });
+      } catch (error) {
+        console.error('CategoryList.vue: Ошибка форматирования даты:', error, 'Timestamp:', timestamp);
+        return 'Нет активности';
+      }
     };
 
     const navigateToCategory = (category) => {

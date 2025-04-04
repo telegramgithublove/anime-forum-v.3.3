@@ -52,15 +52,15 @@ export default {
 
               const updatedCategories = {};
               for (const [id, category] of Object.entries(categoriesData)) {
-                // Используем posts вместо postIds
-                const posts = category.posts ? Object.keys(category.posts) : [];
-                const topicsCount = posts.length;
+                const posts = category.posts || {};
+                const topicsCount = Object.keys(posts).length;
                 console.log(`categories.js: Подсчет тем для категории ${id}:`, topicsCount);
 
                 updatedCategories[id] = {
                   ...category,
                   id,
-                  topicsCount, // Обновляем topicsCount на основе количества постов
+                  posts, // Сохраняем полные данные постов
+                  topicsCount,
                 };
               }
 
@@ -92,7 +92,7 @@ export default {
       console.log('categories.js: Запрос постов для категории:', categoryId);
       try {
         const db = getDatabase();
-        const postsRef = dbRef(db, `categories/${categoryId}/posts`); // Изменено на posts
+        const postsRef = dbRef(db, `categories/${categoryId}/posts`);
         const snapshot = await get(postsRef);
         if (snapshot.exists()) {
           const postIds = Object.keys(snapshot.val());
@@ -122,12 +122,12 @@ export default {
   getters: {
     getAllCategories: (state) => {
       const categoriesArray = Object.entries(state.categories || {}).map(([id, data]) => {
-        const posts = data.posts ? Object.keys(data.posts) : []; // Изменено на posts
-        const topicsCount = data.topicsCount !== undefined ? data.topicsCount : posts.length;
+        const posts = data.posts || {};
+        const topicsCount = Object.keys(posts).length;
         return {
           id,
           ...data,
-          posts, // Оставляем posts вместо postIds
+          posts, // Возвращаем полные данные постов
           topicsCount,
         };
       });
@@ -137,8 +137,8 @@ export default {
     getCategoryById: (state) => (id) => {
       const category = state.categories[id] || null;
       if (category) {
-        const posts = category.posts ? Object.keys(category.posts) : []; // Изменено на posts
-        const topicsCount = category.topicsCount !== undefined ? category.topicsCount : posts.length;
+        const posts = category.posts || {};
+        const topicsCount = Object.keys(posts).length;
         console.log('categories.js: Геттер getCategoryById для id:', id, 'возвращает:', { ...category, posts, topicsCount });
         return { ...category, posts, topicsCount };
       }
