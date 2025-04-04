@@ -91,17 +91,28 @@
           <div class="p-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700">
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-6">
-                <button @click="handleLike" class="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition-all duration-300" :class="{ 'text-red-500': isLikedByCurrentUser }">
+                <button 
+                  @click="isAuthenticated ? handleLike() : openAttention()" 
+                  class="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition-all duration-300" 
+                  :class="{ 'text-red-500': isLikedByCurrentUser }"
+                >
                   <i class="fas fa-heart text-lg" :class="{ 'fas': isLikedByCurrentUser, 'far': !isLikedByCurrentUser }"></i>
                   <span class="text-sm font-medium">{{ likesCount }}</span>
                 </button>
-                <button @click="focusComment" class="flex items-center space-x-2 text-gray-500 hover:text-blue-500 transition-all duration-300">
+                <button 
+                  @click="isAuthenticated ? focusComment() : openAttention()" 
+                  class="flex items-center space-x-2 text-gray-500 hover:text-blue-500 transition-all duration-300"
+                >
                   <i class="fas fa-comment text-lg"></i>
                   <span class="text-sm font-medium">{{ post.commentsCount }}</span>
                 </button>
               </div>
               <div class="relative group">
-                <button @click="toggleFavorite" class="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 transition-all duration-300" :class="{ 'text-yellow-500': isFavorite }">
+                <button 
+                  @click="isAuthenticated ? toggleFavorite() : openAttention()" 
+                  class="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 transition-all duration-300" 
+                  :class="{ 'text-yellow-500': isFavorite }"
+                >
                   <i class="fas fa-star text-lg" :class="{ 'fas': isFavorite, 'far': !isFavorite }"></i>
                 </button>
                 <span class="absolute right-0 top-[-2rem] w-max px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
@@ -138,11 +149,12 @@
               <div class="text-base font-semibold text-gray-900 dark:text-white">{{ currentUser.username || 'Гость' }}</div>
               <textarea
                 v-model="commentContent"
-                :class="{ 'required-field': !commentContent.trim() }"
+                :class="{ 'required-field': !commentContent.trim() && submitted }"
                 placeholder="Напишите ваш комментарий..."
                 class="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[120px] max-h-[200px] resize-none overflow-y-auto transition-all duration-300 hover:bg-gray-200 dark:hover:bg-gray-600"
                 @input="handleCommentInput"
                 @keydown="handleKeyDown"
+                :disabled="!isAuthenticated"
               ></textarea>
               <div v-if="imagePreview" class="mt-4">
                 <img :src="imagePreview" alt="Предпросмотр изображения" class="preview-image" />
@@ -162,23 +174,23 @@
                   <span class="font-medium">символов осталось</span>
                 </div>
                 <div class="flex items-center space-x-3">
-                  <label class="relative cursor-pointer">
+                  <label class="relative cursor-pointer" v-if="isAuthenticated">
                     <input type="file" accept="image/*" @change="handleImageUpload" class="hidden">
                     <i class="fas fa-image text-lg text-purple-600 hover:text-purple-700 transition-all duration-300"></i>
                   </label>
-                  <label class="relative cursor-pointer">
+                  <label class="relative cursor-pointer" v-if="isAuthenticated">
                     <input type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg" @change="handleAudioUpload" class="hidden">
                     <i class="fas fa-music text-lg text-purple-600 hover:text-purple-700 transition-all duration-300"></i>
                   </label>
-                  <label class="relative cursor-pointer">
+                  <label class="relative cursor-pointer" v-if="isAuthenticated">
                     <input type="file" accept="video/mp4,video/quicktime" @change="handleVideoUpload" class="hidden">
                     <i class="fas fa-video text-lg text-purple-600 hover:text-purple-700 transition-all duration-300"></i>
                   </label>
                 </div>
                 <button
-                  @click="submitComment"
+                  @click="isAuthenticated ? submitComment() : openAttention()"
                   class="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700 transform hover:scale-105 transition-all duration-300"
-                  :disabled="!commentContent.trim()"
+                  :disabled="isAuthenticated && !commentContent.trim()"
                 >
                   <i class="fas fa-paper-plane"></i>
                   <span class="text-sm font-medium">Отправить</span>
@@ -193,6 +205,7 @@
         <p class="text-gray-500 dark:text-gray-400">Пост не найден или произошла ошибка</p>
       </div>
     </div>
+    <Attention ref="attentionModal" />
   </div>
 </template>
 
@@ -204,6 +217,7 @@ import { useToast } from 'vue-toastification';
 import { getDatabase, ref as dbRef, update, get } from 'firebase/database';
 import Comments from '../components/Comments.vue';
 import Pagination from '../components/Pagination.vue';
+import Attention from '../components/Attention.vue';
 
 const store = useStore();
 const route = useRoute();
@@ -217,15 +231,18 @@ const audioPreview = ref(null);
 const imageFile = ref(null);
 const audioFile = ref(null);
 const videoFile = ref(null);
+const submitted = ref(false);
 
 const post = ref(null);
 const isLoading = ref(true);
+const attentionModal = ref(null);
 
 const postId = computed(() => route.params.id);
 const allComments = computed(() => store.getters['comments/getComments'] || []);
 const currentPage = computed(() => store.getters['pagination/getCurrentPage']);
 const itemsPerPage = ref(10);
 const totalComments = computed(() => post.value?.commentsCount || 0);
+const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
 
 // Вычисляем комментарии для текущей страницы
 const pagedComments = computed(() => {
@@ -354,9 +371,8 @@ onBeforeUnmount(() => {
 const goBack = () => router.push('/');
 
 const handleLike = async () => {
-  const user = store.state.auth.user;
-  if (!user) {
-    toast.warning('Пожалуйста, войдите в систему, чтобы поставить лайк');
+  if (!isAuthenticated.value) {
+    openAttention();
     return;
   }
   try {
@@ -369,9 +385,8 @@ const handleLike = async () => {
 };
 
 const toggleFavorite = async () => {
-  const user = store.state.auth.user;
-  if (!user) {
-    toast.warning('Пожалуйста, войдите в систему, чтобы добавить в избранное');
+  if (!isAuthenticated.value) {
+    openAttention();
     return;
   }
   try {
@@ -388,6 +403,10 @@ const toggleFavorite = async () => {
 };
 
 const focusComment = () => {
+  if (!isAuthenticated.value) {
+    openAttention();
+    return;
+  }
   const textarea = document.querySelector('textarea');
   if (textarea) textarea.focus();
 };
@@ -447,6 +466,11 @@ const handleVideoUpload = (event) => {
 };
 
 const submitComment = async () => {
+  if (!isAuthenticated.value) {
+    openAttention();
+    return;
+  }
+  submitted.value = true;
   if (!commentContent.value.trim()) {
     toast.warning('Пожалуйста, введите текст комментария');
     return;
@@ -515,6 +539,7 @@ const submitComment = async () => {
     videoPreview.value = null;
     audioFile.value = null;
     audioPreview.value = null;
+    submitted.value = false;
     toast.success('Комментарий успешно добавлен!');
   } catch (error) {
     console.error('PostDetails.vue - Ошибка отправки комментария:', error);
@@ -552,6 +577,10 @@ const downloadDocument = (url, name) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+const openAttention = () => {
+  attentionModal.value.open();
 };
 </script>
 

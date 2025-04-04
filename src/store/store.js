@@ -20,6 +20,7 @@ import favoritesModule from './modules/favorites.js';
 import securityModule from './modules/security.js';
 import mytopicsModule from './modules/mytopics.js';
 import notificationsModule from './modules/notifications.js';
+import earnModule from './modules/earn.js';
 
 
 
@@ -44,7 +45,8 @@ const store = createStore({
     favorites: favoritesModule,
     security: securityModule,
     mytopics: mytopicsModule,
-    notifications: notificationsModule
+    notifications: notificationsModule,
+    earn: earnModule
   }
 });
 

@@ -37,6 +37,7 @@ import EmailVerificationHandler from '../views/auth/EmailVerificationHandler.vue
 import Notifications from '../views/Notifications.vue'
 import CreatePost from '../views/CreatePost.vue'
 import DiscussedPosts from '../views/DiscussedPosts.vue'
+import EarnMoney from '../views/EarnMoney.vue'
 
 // Используем динамический импорт для Profile и CategoryList
 const Profile = () => import('../views/profile/Profile.vue')
@@ -261,12 +262,12 @@ const routes = [
 }
 },
 {
-  path: '/most-discussed-posts', // Добавляем "s" для соответствия URL
-  name: 'DiscussedPosts.vue',
-  component: DiscussedPosts,
+  path: '/earn', // Добавляем "s" для соответствия URL
+  name: 'EarnMoney.vue',
+  component: EarnMoney,
   meta: { 
     requiresAuth: true,
-    title: 'Отвеченные посты' 
+    title: 'заработать деньги' 
 }
 },
 {

@@ -19,10 +19,24 @@
             </p>
           </div>
         </div>
-        <router-link :to="{ name: 'create-post', params: { categoryId } }" class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-500 text-white font-medium rounded-full hover:from-purple-700 hover:to-indigo-600 transform hover:-translate-y-1 transition-all duration-300 shadow-lg">
-          <i class="fas fa-plus mr-2"></i>
-          Новая тема
-        </router-link>
+        <div>
+          <button 
+            v-if="!isAuthenticated" 
+            @click="openAttention" 
+            class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-500 text-white font-medium rounded-full hover:from-purple-700 hover:to-indigo-600 transform hover:-translate-y-1 transition-all duration-300 shadow-lg"
+          >
+            <i class="fas fa-plus mr-2"></i>
+            Новая тема
+          </button>
+          <router-link 
+            v-else 
+            :to="{ name: 'create-post', params: { categoryId } }" 
+            class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-500 text-white font-medium rounded-full hover:from-purple-700 hover:to-indigo-600 transform hover:-translate-y-1 transition-all duration-300 shadow-lg"
+          >
+            <i class="fas fa-plus mr-2"></i>
+            Новая тема
+          </router-link>
+        </div>
       </div>
 
       <div v-if="pagedPosts.length > 0 && !isLoading" class="space-y-6">
@@ -84,9 +98,9 @@
             <div class="flex items-center justify-between px-8 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700">
               <div class="flex items-center space-x-4">
                 <button 
-                  @click.stop="toggleLike(post.id)"
+                  @click.stop="isAuthenticated ? toggleLike(post.id) : openAttention()"
                   class="flex items-center space-x-1 text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-500 transition-colors duration-200"
-                  :disabled="isLoadingLikes || !isAuthenticated"
+                  :disabled="isLoadingLikes"
                   :title="isAuthenticated ? '' : 'Требуется авторизация'"
                 >
                   <i class="fas" :class="post.isLiked ? 'fa-heart text-purple-600 dark:text-purple-500' : 'fa-heart'"></i>
@@ -125,6 +139,7 @@
         <Pagination :total-items="posts.length" :items-per-page="itemsPerPage" />
       </div>
     </div>
+    <Attention ref="attentionModal" />
   </div>
 </template>
 
@@ -134,6 +149,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import { getDatabase, ref as dbRef, get, onValue, update } from 'firebase/database';
 import Pagination from '../components/Pagination.vue';
+import Attention from '../components/Attention.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -146,6 +162,7 @@ const isLoading = ref(true);
 const isLoadingLikes = ref(false);
 const loadingProgress = ref(0);
 const itemsPerPage = 10;
+const attentionModal = ref(null);
 let unsubscribe = null;
 
 const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
@@ -257,7 +274,7 @@ const formatDate = (timestamp) => {
 
 const toggleLike = async (postId) => {
   if (!isAuthenticated.value) {
-    alert('Требуется авторизация для лайка');
+    openAttention();
     return;
   }
   try {
@@ -343,6 +360,10 @@ const incrementPostViews = async (postId) => {
 
 const handleAvatarError = (event) => {
   event.target.src = '/image/empty_avatar.png';
+};
+
+const openAttention = () => {
+  attentionModal.value.open();
 };
 </script>
 
