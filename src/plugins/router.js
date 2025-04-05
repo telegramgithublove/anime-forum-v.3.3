@@ -1,319 +1,129 @@
-// router/index.js
-import { createRouter, createWebHistory } from 'vue-router'
-import { getAuth } from 'firebase/auth'
-import { getDatabase, ref, get } from 'firebase/database'
-import axios from 'axios'
-import store from '../store/store'
+import { createRouter, createWebHistory } from 'vue-router';
+import { getAuth } from 'firebase/auth';
+import store from '../store/store';
 
-// Импортируем основные компоненты
-
-
-import AddTopic from '../views/AddTopic.vue'
-import CategoryPosts from '../views/CategoryPosts.vue'
-import PostList from '../views/PostList.vue'
-import Thread from '../views/Thread.vue'
-import AdminSetup from '../views/AdminSetup.vue'
-import TopicDetails from '../views/TopicDetails.vue'
-import ThreadCard from '../views/ThreadCard.vue'
-import ThreadList from '../views/ThreadList.vue'
-import AdminPanel from '../views/AdminPanel.vue'
-import UserManagement from '../views/UserManagement.vue'
-import ContentManagement from '../views/ContentManagement.vue'
-import Reports from '../views/Reports.vue'
-import PostDetails from '../views/PostDetails.vue'
-import Settings from '../views/Settings.vue'
-import FavoritesPosts from '../views/FavoritesPosts.vue'
-import Security from '../views/Security.vue'
-import MyTopics from '../views/MyTopics.vue'
-import PopularPosts from '../views/PopularPosts.vue'
-import LikedPosts from '../views/LikedPosts.vue'
-
-// Импортируем компоненты аутентификации
-import Registration from '../views/auth/Registration.vue'
-import Notification from '../views/auth/Notification.vue'
-import VeryfyEmail from '../views/auth/VeryfyEmail.vue'
-import SendEmailVerification from '../views/auth/SendEmailVerification.vue'
-import EmailVerificationHandler from '../views/auth/EmailVerificationHandler.vue'
-import Notifications from '../views/Notifications.vue'
-import CreatePost from '../views/CreatePost.vue'
-import DiscussedPosts from '../views/DiscussedPosts.vue'
-import EarnMoney from '../views/EarnMoney.vue'
-
-// Используем динамический импорт для Profile и CategoryList
-const Profile = () => import('../views/profile/Profile.vue')
-const CategoryList = () => import('../views/CategoryList.vue')
-
-const API_BASE_URL = 'https://forum-a36e8-default-rtdb.asia-southeast1.firebasedatabase.app';
-
-// Функция проверки доступа к админ-панели
-const checkAdminAccess = async (to, from, next) => {
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-  const userRole = localStorage.getItem('userRole');
-
-  console.log('Checking admin access:', { isAuthenticated, userRole });
-
-  // Специальная проверка для суперпользователя
-  if (userRole === 'superuser' && isAuthenticated) {
-    console.log('Superuser access granted');
-    next();
-    return;
-  }
-
-  // Если нет аутентификации, перенаправляем на логин
-  if (!isAuthenticated) {
-    console.log('No authenticated user found');
-    next({
-      path: '/login',
-      query: { redirect: to.fullPath }
-    });
-    return;
-  }
-
-  // Для обычных пользователей проверяем роль в базе данных
-  try {
-    const db = getDatabase();
-    const userId = localStorage.getItem('userId');
-    if (!userId) {
-      throw new Error('User ID not found');
-    }
-
-    const userRef = ref(db, `users/${userId}`);
-    const snapshot = await get(userRef);
-    
-    if (snapshot.exists()) {
-      const userData = snapshot.val();
-      const dbUserRole = userData.role;
-      console.log('User role from database:', dbUserRole);
-      
-      localStorage.setItem('userRole', dbUserRole);
-      
-      if (dbUserRole === 'admin' || dbUserRole === 'superuser') {
-        console.log('Admin/Superuser access granted from database');
-        next();
-      } else {
-        console.log('Access denied: not an admin/superuser');
-        next('/');
-      }
-    } else {
-      console.log('User data not found in database');
-      next('/');
-    }
-  } catch (error) {
-    console.error('Error checking admin access:', error);
-    next('/');
-  }
-};
-
-// Проверка аутентификации для защищенных маршрутов
-const checkAuth = async (to, from, next) => {
-  const auth = getAuth()
-  
-  // Ждем инициализации Firebase Auth
-  await new Promise((resolve) => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      unsubscribe()
-      resolve(user)
-    })
-  })
-
-  const currentUser = auth.currentUser
-  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
-
-  // Если пользователь авторизован, обновляем его данные в store
-  if (currentUser) {
-    await store.dispatch('auth/setUser', {
-      uid: currentUser.uid,
-      email: currentUser.email,
-      emailVerified: currentUser.emailVerified
-    })
-    
-    // Загружаем профиль пользователя
-    try {
-      await store.dispatch('profile/fetchProfile', currentUser.uid)
-    } catch (error) {
-      console.error('Error fetching user profile:', error)
-    }
-  }
-
-  // Проверяем права доступа
-  if (requiresAuth && !currentUser) {
-    // Сохраняем целевой маршрут для редиректа после логина
-    next({ 
-      path: '/login',
-      query: { redirect: to.fullPath }
-    })
-  } else if (to.path === '/login' && currentUser) {
-    // Если пользователь уже авторизован и пытается перейти на страницу логина
-    next({ path: '/' })
-  } else {
-    next()
-  }
-};
-
-// Проверка верификации email
-const checkEmailVerified = async (to, from, next) => {
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-  const userRole = localStorage.getItem('userRole');
-  const emailVerified = localStorage.getItem('emailVerified') === 'true';
-
-  // Проверяем superuser
-  if (userRole === 'superuser' && isAuthenticated && emailVerified) {
-    next();
-    return;
-  }
-
-  const auth = getAuth();
-  const user = auth.currentUser;
-
-  if (!user && !isAuthenticated) {
-    next('/login');
-    return;
-  }
-
-  await user?.reload();
-  if (!user?.emailVerified && !emailVerified) {
-    next('/verify-email');
-  } else {
-    next();
-  }
-};
+// Импорты компонентов (оставляем без изменений)
+import AddTopic from '../views/AddTopic.vue';
+import CategoryPosts from '../views/CategoryPosts.vue';
+import PostList from '../views/PostList.vue';
+import Thread from '../views/Thread.vue';
+import AdminSetup from '../views/AdminSetup.vue';
+import TopicDetails from '../views/TopicDetails.vue';
+import ThreadCard from '../views/ThreadCard.vue';
+import ThreadList from '../views/ThreadList.vue';
+import AdminPanel from '../views/AdminPanel.vue';
+import UserManagement from '../views/UserManagement.vue';
+import ContentManagement from '../views/ContentManagement.vue';
+import Reports from '../views/Reports.vue';
+import PostDetails from '../views/PostDetails.vue';
+import Settings from '../views/Settings.vue';
+import FavoritesPosts from '../views/FavoritesPosts.vue';
+import Security from '../views/Security.vue';
+import MyTopics from '../views/MyTopics.vue';
+import PopularPosts from '../views/PopularPosts.vue';
+import LikedPosts from '../views/LikedPosts.vue';
+import Registration from '../views/auth/Registration.vue';
+import Notification from '../views/auth/Notification.vue';
+import VeryfyEmail from '../views/auth/VeryfyEmail.vue';
+import SendEmailVerification from '../views/auth/SendEmailVerification.vue';
+import EmailVerificationHandler from '../views/auth/EmailVerificationHandler.vue';
+import Notifications from '../views/Notifications.vue';
+import CreatePost from '../views/CreatePost.vue';
+import DiscussedPosts from '../views/DiscussedPosts.vue';
+import EarnMoney from '../views/EarnMoney.vue';
+const Profile = () => import('../views/profile/Profile.vue');
+const CategoryList = () => import('../views/CategoryList.vue');
 
 const routes = [
-  
   {
-    path: '/security', // Добавляем "s" для соответствия URL
+    path: '/security',
     name: 'Security',
     component: Security,
-    meta: { 
-      requiresAuth: true,
-      title: 'Безопасность' // Обновляем title для точности
-    }
+    meta: { requiresAuth: true, title: 'Безопасность' }
   },
-
   {
     path: '/login',
     name: 'Login',
     component: () => import('../views/auth/Login.vue'),
-    meta: {
-      requiresGuest: true
-    }
+    meta: { requiresGuest: true }
   },
   {
     path: '/register',
     name: 'Registration',
     component: Registration,
-    meta: {
-      requiresGuest: true
-    }
+    meta: { requiresGuest: true }
   },
   {
     path: '/settings',
     name: 'Settings',
     component: Settings,
-    meta: {
-      requiresAuth: true,
-      requiresEmailVerified: true,
-      title: 'Настройки'
-    }
+    meta: { requiresAuth: true, requiresEmailVerified: true, title: 'Настройки' }
   },
   {
     path: '/profile',
     name: 'Profile',
     component: Profile,
-    meta: { 
-      requiresAuth: true,
-      title: 'Профиль пользователя'
-    }
+    meta: { requiresAuth: true, title: 'Профиль пользователя' }
   },
   {
-    path: '/favorites', // Добавляем "s" для соответствия URL
+    path: '/favorites',
     name: 'FavoritesPosts',
     component: FavoritesPosts,
-    meta: { 
-      requiresAuth: true,
-      title: 'Избранные посты' // Обновляем title для точности
-    }
+    meta: { requiresAuth: true, title: 'Избранные посты' }
   },
   {
-    path: '/my-topics', // Добавляем "s" для соответствия URL
-    name: 'MyTopics.vue',
+    path: '/my-topics',
+    name: 'MyTopics',
     component: MyTopics,
-    meta: { 
-      requiresAuth: true,
-      title: 'Мои темы' // Обновляем title для точности
-    }
+    meta: { requiresAuth: true, title: 'Мои темы' }
   },
   {
-    path: '/popular-posts', // Добавляем "s" для соответствия URL
-    name: 'PopularPosts.vue',
+    path: '/popular-posts',
+    name: 'PopularPosts',
     component: PopularPosts,
-    meta: { 
-      requiresAuth: true,
-      title: 'Популярные посты' 
-  }
-},
-{
-  path: '/most-discussed-posts', // Добавляем "s" для соответствия URL
-  name: 'DiscussedPosts.vue',
-  component: DiscussedPosts,
-  meta: { 
-    requiresAuth: true,
-    title: 'Отвеченные посты' 
-}
-},
-{
-  path: '/earn', // Добавляем "s" для соответствия URL
-  name: 'EarnMoney.vue',
-  component: EarnMoney,
-  meta: { 
-    requiresAuth: true,
-    title: 'заработать деньги' 
-}
-},
-{
-  path: '/most-liked-posts', // Добавляем "s" для соответствия URL
-  name: 'LikedPosts.vue',
-  component: LikedPosts,
-  meta: { 
-    requiresAuth: true,
-    title: 'Понрвившиеся посты' 
-}
-},
+    meta: { requiresAuth: true, title: 'Популярные посты' }
+  },
   {
-    path: '/notifications', // Добавляем "s" для соответствия URL
+    path: '/most-discussed-posts',
+    name: 'DiscussedPosts',
+    component: DiscussedPosts,
+    meta: { requiresAuth: true, title: 'Отвеченные посты' }
+  },
+  {
+    path: '/earn',
+    name: 'EarnMoney',
+    component: EarnMoney,
+    meta: { requiresAuth: true, title: 'Заработать деньги' }
+  },
+  {
+    path: '/most-liked-posts',
+    name: 'LikedPosts',
+    component: LikedPosts,
+    meta: { requiresAuth: true, title: 'Понравившиеся посты' }
+  },
+  {
+    path: '/notifications',
     name: 'Notifications',
     component: Notifications,
-    meta: { 
-      requiresAuth: true,
-      title: 'Мои темы' // Обновляем title для точности
-    }
+    meta: { requiresAuth: true, title: 'Уведомления' }
   },
   {
     path: '/profile/edit',
     name: 'EditProfile',
     component: () => import('../views/profile/EditProfile.vue'),
-    meta: { 
-      requiresAuth: true,
-      title: 'Редактировать профиль'
-    }
+    meta: { requiresAuth: true, title: 'Редактировать профиль' }
   },
   {
     path: '/profile/settings',
     name: 'ProfileSettings',
     component: () => import('../views/profile/Settings.vue'),
-    meta: { 
-      requiresAuth: true,
-      title: 'Настройки профиля'
-    }
+    meta: { requiresAuth: true, title: 'Настройки профиля' }
   },
   {
     path: '/profile/friends',
     name: 'Friends',
     component: () => import('../views/profile/Friends.vue'),
-    meta: { 
-      requiresAuth: true,
-      title: 'Друзья'
-    }
+    meta: { requiresAuth: true, title: 'Друзья' }
   },
   {
     path: '/',
@@ -321,7 +131,6 @@ const routes = [
     component: CategoryList,
     meta: { requiresAuth: false }
   },
-
   {
     path: '/category/:categoryId',
     name: 'CategoryPosts',
@@ -344,10 +153,7 @@ const routes = [
     path: '/post/:id',
     name: 'post-details',
     component: PostDetails,
-    meta: {
-      requiresAuth: true,
-      title: 'Просмотр поста'
-    }
+    meta: { requiresAuth: true, title: 'Просмотр поста' }
   },
   {
     path: '/post/:id/details',
@@ -384,58 +190,31 @@ const routes = [
     path: '/admin',
     name: 'AdminPanel',
     component: AdminPanel,
-    beforeEnter: (to, from, next) => {
-      const userRole = localStorage.getItem('userRole');
-      const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-      
-      if (isAuthenticated && (userRole === 'admin' || userRole === 'superuser')) {
-        next();
-      } else {
-        next('/login');
-      }
-    },
-    meta: { 
-      requiresAuth: true,
-      requiresAdmin: true
-    }
+    meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/user-management',
     name: 'UserManagement',
     component: UserManagement,
-    beforeEnter: checkAdminAccess,
-    meta: { 
-      requiresAuth: true,
-      requiresAdmin: true
-    }
+    meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/content-management',
     name: 'ContentManagement',
     component: ContentManagement,
-    beforeEnter: checkAdminAccess,
-    meta: { 
-      requiresAuth: true,
-      requiresAdmin: true
-    }
+    meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/reports',
     name: 'Reports',
     component: Reports,
-    beforeEnter: checkAdminAccess,
-    meta: { 
-      requiresAuth: true,
-      requiresAdmin: true
-    }
+    meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
     path: '/send-verification',
     name: 'SendVerification',
     component: SendEmailVerification,
-    meta: {
-      requiresAuth: true
-    }
+    meta: { requiresAuth: true }
   },
   {
     path: '/verify-email',
@@ -446,9 +225,7 @@ const routes = [
     path: '/email-verification',
     name: 'EmailVerificationHandler',
     component: EmailVerificationHandler,
-    meta: {
-      requiresAuth: true
-    }
+    meta: { requiresAuth: true }
   },
   {
     path: '/admin-setup',
@@ -459,19 +236,13 @@ const routes = [
     path: '/friends',
     name: 'Friends',
     component: () => import('../views/Friends.vue'),
-    meta: { 
-      requiresAuth: true,
-      title: 'Друзья'
-    }
+    meta: { requiresAuth: true, title: 'Друзья' }
   },
   {
     path: '/category/:categoryId/create',
     name: 'create-post',
     component: () => import('../views/CreatePost.vue'),
-    meta: {
-      requiresAuth: true,
-      title: 'Создать пост'
-    }
+    meta: { requiresAuth: true, title: 'Создать пост' }
   },
 ];
 
@@ -480,72 +251,58 @@ const router = createRouter({
   routes,
 });
 
-// Navigation Guards
 router.beforeEach(async (to, from, next) => {
-  const auth = getAuth()
-  
+  const auth = getAuth();
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
+  const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin);
+
   // Ждем инициализации Firebase Auth
   await new Promise((resolve) => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      unsubscribe()
-      resolve(user)
-    })
-  })
+      unsubscribe();
+      resolve(user);
+    });
+  });
 
-  const currentUser = auth.currentUser
-  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
-  const requiresAdmin = to.matched.some(record => record.meta.requiresAdmin)
-  
-  // Проверяем superuser
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true'
-  const userRole = localStorage.getItem('userRole')
+  const currentUser = auth.currentUser;
+  const isAuthenticated = store.getters['auth/isAuthenticated'];
+  const isSuperUser = store.getters['auth/isSuperUser'];
+  const userRole = localStorage.getItem('userRole');
 
-  // Специальная проверка для админ-панели
-  if (to.path === '/admin') {
-    if (userRole === 'superuser' && isAuthenticated) {
-      next()
-      return
-    } else {
-      next('/')
-      return
-    }
+  console.log('Navigation Guard:', { isAuthenticated, isSuperUser, userRole, path: to.path });
+
+  // Обработка суперпользователя
+  if (requiresAdmin && isSuperUser && isAuthenticated) {
+    next();
+    return;
   }
 
+  // Общая проверка аутентификации
   if (requiresAuth && !currentUser && !isAuthenticated) {
     next({
       path: '/login',
       query: { redirect: to.fullPath }
-    })
-    return
+    });
+    return;
   }
 
+  // Проверка для админских маршрутов
+  if (requiresAdmin && !isSuperUser && userRole !== 'admin') {
+    next('/');
+    return;
+  }
+
+  // Если пользователь авторизован и пытается зайти на /login
   if (to.path === '/login' && isAuthenticated) {
-    if (userRole === 'superuser') {
-      next('/admin')
-      return
+    if (isSuperUser) {
+      next('/admin');
+    } else {
+      next('/');
     }
-    next('/')
-    return
+    return;
   }
 
-  next()
-})
-
-// Функция проверки статуса администратора
-async function checkAdminStatus(uid) {
-  if (!uid) return false
-  
-  try {
-    const db = getDatabase()
-    const adminRef = ref(db, `admins/${uid}`)
-    const snapshot = await get(adminRef)
-    return snapshot.exists() && snapshot.val() === true
-  } catch (error) {
-    console.error('Error checking admin status:', error)
-    return false
-  }
-}
-
-
+  next();
+});
 
 export default router;
