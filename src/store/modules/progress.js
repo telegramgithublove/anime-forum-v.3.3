@@ -1,4 +1,3 @@
-// progress.js
 import narutoImg from '@/assets/images/naruto.png';
 import luffyImg from '@/assets/images/luffy.png';
 import leviImg from '@/assets/images/levi.png';
@@ -56,6 +55,16 @@ const actions = {
       console.log(`progress.js: Достигнута веха ${newMilestone.name} при ${newPostCount} постах, обновляем роль`);
       await dispatch('profile/updateRole', { userId, role: newMilestone.name }, { root: true });
     }
+  },
+  // Новое действие для обновления роли на основе активированной карточки
+  async updateRoleBasedOnCard({ rootState, dispatch }, role) {
+    const userId = rootState.auth.user?.uid;
+    if (!userId) {
+      console.warn('progress.js: Пользователь не авторизован для обновления роли');
+      return;
+    }
+    await dispatch('profile/updateRole', { userId, role }, { root: true });
+    console.log(`progress.js: Роль обновлена до ${role} на основе активированной карточки`);
   },
   initializeProgress({ commit, dispatch, state, rootState }) {
     const savedPosts = localStorage.getItem('userCreatedPosts');
