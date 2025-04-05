@@ -11,9 +11,9 @@ const state = {
   milestones: [
     { name: 'New User', posts: 0, image: narutoImg, position: 0 },
     { name: 'User', posts: 200, image: luffyImg, position: 25 },
-    { name: 'Moderator', posts: 500, image: leviImg, position: 42 },
+    { name: 'Moderator', posts: 700, image: leviImg, position: 42 },
     { name: 'Teacher', posts: 1000, image: sailorMoonImg, position: 65 },
-    { name: 'Administrator', posts: 18000, image: gokuImg, position: 100 },
+    { name: 'Administrator', posts: 1800, image: gokuImg, position: 100 },
   ],
 };
 

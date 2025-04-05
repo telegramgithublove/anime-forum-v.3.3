@@ -35,6 +35,7 @@ const getters = {
   isEmailVerified: state => state.user?.emailVerified || false,
   getUserSettings: state => state.user?.settings || {},
   getUserById: state => (uid) => state.users[uid] || { profile: { username: 'Гость', avatarUrl: '/image/empty_avatar.png', signature: '' } },
+  userBalance: state => state.user?.balance || 0,
 };
 
 const actions = {
@@ -80,7 +81,8 @@ const actions = {
         emailVerified: false,
         createdAt: Date.now(),
         lastLogin: Date.now(),
-        status: 'active'
+        status: 'active',
+        balance: 0
       };
 
       await set(userRef, userDataForDB);
@@ -92,7 +94,8 @@ const actions = {
         profile: userProfile,
         role: 'user',
         emailVerified: false,
-        settings: userDataForDB.settings
+        settings: userDataForDB.settings,
+        balance: 0
       };
 
       commit('SET_USER', userDataToStore);
@@ -133,7 +136,8 @@ const actions = {
         },
         role: userData.role || 'user',
         emailVerified: user.emailVerified,
-        settings: userData.settings || { profileVisibility: true, notifyMessages: true, notifyReplies: true, theme: 'light' }
+        settings: userData.settings || { profileVisibility: true, notifyMessages: true, notifyReplies: true, theme: 'light' },
+        balance: userData.balance || 0
       };
 
       commit('SET_USER', userDataToStore);
@@ -198,7 +202,8 @@ const actions = {
               },
               role: userData.role || 'user',
               emailVerified: user.emailVerified,
-              settings: userData.settings || { profileVisibility: true, notifyMessages: true, notifyReplies: true, theme: 'light' }
+              settings: userData.settings || { profileVisibility: true, notifyMessages: true, notifyReplies: true, theme: 'light' },
+              balance: userData.balance || 0
             };
 
             commit('SET_USER', userDataToStore);
@@ -243,7 +248,8 @@ const actions = {
           },
           role: userDataFromDB.role || userData.role || 'user',
           emailVerified: userData.emailVerified || false,
-          settings: userDataFromDB.settings || userData.settings || { profileVisibility: true, notifyMessages: true, notifyReplies: true, theme: 'light' }
+          settings: userDataFromDB.settings || userData.settings || { profileVisibility: true, notifyMessages: true, notifyReplies: true, theme: 'light' },
+          balance: userDataFromDB.balance || userData.balance || 0
         };
 
         commit('SET_USER', userDataToStore);
@@ -284,7 +290,8 @@ const actions = {
           uid,
           email: 'unknown',
           profile: { username: 'Гость', avatarUrl: '/image/empty_avatar.png', signature: '' },
-          role: 'user'
+          role: 'user',
+          balance: 0
         };
         commit('SET_USERS', { uid, data: defaultUserData });
         return defaultUserData;
@@ -295,7 +302,8 @@ const actions = {
         uid,
         email: 'unknown',
         profile: { username: 'Гость', avatarUrl: '/image/empty_avatar.png', signature: '' },
-        role: 'user'
+        role: 'user',
+        balance: 0
       };
       commit('SET_USERS', { uid, data: defaultUserData });
       return defaultUserData;
@@ -307,7 +315,6 @@ const actions = {
     commit('CLEAR_USERS_CACHE');
   },
 
-  // Новое действие для обновления username
   async updateUserUsername({ commit, state }, username) {
     console.log('auth.js: Вызов действия updateUserUsername с username:', username);
     try {
@@ -323,7 +330,6 @@ const actions = {
     }
   },
 
-  // Новое действие для обновления avatarUrl
   async updateUserAvatar({ commit, state }, avatarUrl) {
     console.log('auth.js: Вызов действия updateUserAvatar с avatarUrl:', avatarUrl);
     try {
