@@ -264,7 +264,7 @@ const currentUser = computed(() => {
 });
 
 const authorData = computed(() => {
-  const authorId = post.value?.authorId;
+  const authorId = post.value?.authorId || post.value?.userId;
   if (!authorId || !post.value) {
     return {
       name: 'Гость',
@@ -274,17 +274,9 @@ const authorData = computed(() => {
   }
 
   const authorProfile = store.getters['profile/getProfileByUserId'](authorId);
-  if (!authorProfile) {
-    return {
-      name: post.value.authorName || 'Гость',
-      avatar: post.value.authorAvatar || '/image/empty_avatar.png',
-      role: 'New User',
-    };
-  }
-
   return {
-    name: authorProfile?.profile?.username || authorProfile?.username || post.value.authorName || 'Гость',
-    avatar: authorProfile?.profile?.avatarUrl || authorProfile?.avatarUrl || post.value.authorAvatar || '/image/empty_avatar.png',
+    name: post.value.authorName || authorProfile?.profile?.username || authorProfile?.username || 'Гость',
+    avatar: post.value.authorAvatar || authorProfile?.profile?.avatarUrl || authorProfile?.avatarUrl || '/image/empty_avatar.png',
     role: authorProfile?.profile?.role || authorProfile?.role || 'New User',
   };
 });
@@ -293,8 +285,8 @@ const likesCount = computed(() => post.value?.likesCount || 0);
 
 const isLikedByCurrentUser = computed(() => {
   const user = store.state.auth.user;
-  if (!post.value || !user) return false;
-  return post.value.likes && post.value.likes[user.uid] === true;
+  if (!post.value || !user || !post.value.likes) return false;
+  return post.value.likes[user.uid] === true;
 });
 
 const isFavorite = computed(() => {
@@ -303,6 +295,11 @@ const isFavorite = computed(() => {
   const favorites = store.getters['favorites/getFavoritePosts'] || [];
   return favorites.some(p => p.id === postId.value);
 });
+
+// Проверка, является ли категория "уникальной"
+const isUniqueCategory = (categoryId) => {
+  return categoryId && !categoryId.startsWith('-OJ');
+};
 
 const loadPostData = async () => {
   if (!postId.value) {
@@ -313,13 +310,65 @@ const loadPostData = async () => {
 
   try {
     isLoading.value = true;
-    const postData = await store.dispatch('posts/fetchPostById', postId.value);
+    let postData = null;
+
+    // Проверяем, передан ли categoryId через query
+    const categoryIdFromQuery = route.query.categoryId;
+    if (categoryIdFromQuery) {
+      const db = getDatabase();
+      const postRef = isUniqueCategory(categoryIdFromQuery)
+        ? dbRef(db, `${categoryIdFromQuery}/posts/${postId.value}`)
+        : dbRef(db, `categories/${categoryIdFromQuery}/posts/${postId.value}`);
+      const snapshot = await get(postRef);
+      if (snapshot.exists()) {
+        postData = { id: postId.value, ...snapshot.val(), categoryId: categoryIdFromQuery };
+      }
+    }
+
+    // Если categoryId не передан или пост не найден, пробуем стандартный способ
+    if (!postData) {
+      postData = await store.dispatch('posts/fetchPostById', postId.value);
+      if (!postData) {
+        // Проверяем уникальные категории, если стандартный способ не сработал
+        const db = getDatabase();
+        const uniqueCategories = ['unique1', 'unique2'];
+        for (const uniqueCat of uniqueCategories) {
+          const postRef = dbRef(db, `${uniqueCat}/posts/${postId.value}`);
+          const snapshot = await get(postRef);
+          if (snapshot.exists()) {
+            postData = { id: postId.value, ...snapshot.val(), categoryId: uniqueCat };
+            break;
+          }
+        }
+      }
+    }
+
     if (!postData) {
       toast.warning('Пост не найден');
       router.push('/');
       return;
     }
-    post.value = postData;
+
+    // Нормализация структуры поста
+    post.value = {
+      ...postData,
+      id: postData.id || postId.value,
+      title: postData.title || 'Без названия',
+      content: postData.content || '',
+      authorId: postData.authorId || postData.userId,
+      authorName: postData.authorName || 'Гость',
+      authorAvatar: postData.authorAvatar || '/image/empty_avatar.png',
+      createdAt: postData.createdAt || new Date().toISOString(),
+      categoryId: postData.categoryId || 'unknown',
+      likes: postData.likes || {},
+      likesCount: postData.likesCount || 0,
+      commentsCount: postData.commentsCount || 0,
+      tags: postData.tags || [],
+      pictures: postData.pictures || {},
+      videos: postData.videos || [],
+      audio: postData.audio || [],
+      documents: postData.documents || [],
+    };
 
     if (post.value.authorId) {
       await store.dispatch('profile/fetchProfile', post.value.authorId);
@@ -368,7 +417,7 @@ onBeforeUnmount(() => {
   }
 });
 
-const goBack = () => router.push('/');
+const goBack = () => router.go(-1);
 
 const handleLike = async () => {
   if (!isAuthenticated.value) {
@@ -377,7 +426,9 @@ const handleLike = async () => {
   }
   try {
     const updatedPost = await store.dispatch('posts/toggleLike', post.value.id);
-    post.value = updatedPost || post.value;
+    if (updatedPost) {
+      post.value = updatedPost;
+    }
   } catch (error) {
     toast.error('Не удалось поставить лайк');
     console.error('PostDetails.vue - Ошибка при переключении лайка:', error);
@@ -392,7 +443,7 @@ const toggleFavorite = async () => {
   try {
     await store.dispatch('favorites/toggleFavorite', { 
       postId: postId.value, 
-      categoryId: post.value?.categoryId || '-OJTCQi2RB-FivSg_Cap'
+      categoryId: post.value?.categoryId || 'unknown'
     });
     await store.dispatch('favorites/fetchFavoritePosts');
     toast.success(isFavorite.value ? 'Добавлено в избранное' : 'Удалено из избранного');
@@ -516,19 +567,20 @@ const submitComment = async () => {
 
     const db = getDatabase();
     const postRefGlobal = dbRef(db, `posts/${postId.value}`);
-    const postRefCategory = dbRef(db, `categories/${post.value.categoryId}/posts/${postId.value}`);
+    const postRefCategory = dbRef(db, `${isUniqueCategory(post.value.categoryId) ? '' : 'categories/'}${post.value.categoryId}/posts/${postId.value}`);
 
-    const postSnapshot = await get(postRefGlobal);
+    const postSnapshot = await get(postRefCategory);
     const currentCommentsCount = postSnapshot.exists() ? (postSnapshot.val().commentsCount || 0) : 0;
     const newCommentsCount = currentCommentsCount + 1;
 
     const updates = { commentsCount: newCommentsCount };
-    await update(postRefGlobal, updates);
     await update(postRefCategory, updates);
+    if (!isUniqueCategory(post.value.categoryId)) {
+      await update(postRefGlobal, updates);
+    }
 
     post.value.commentsCount = newCommentsCount;
 
-    // Перезагрузка комментариев после добавления нового
     await store.dispatch('comments/fetchComments', postId.value);
     store.dispatch('pagination/setTotalItems', newCommentsCount);
 
@@ -559,8 +611,18 @@ const handleImageError = (event) => {
   event.target.src = '/image/error-placeholder.png';
 };
 
-const formatDate = (timestamp) => (timestamp ? new Date(timestamp).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' }) : '');
-const formatTime = (timestamp) => (timestamp ? new Date(timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '');
+const formatDate = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(typeof timestamp === 'string' ? Date.parse(timestamp) : timestamp);
+  return date.toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(typeof timestamp === 'string' ? Date.parse(timestamp) : timestamp);
+  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+};
+
 const formatFileSize = (size) => {
   if (!size) return '';
   const units = ['Б', 'КБ', 'МБ', 'ГБ'];

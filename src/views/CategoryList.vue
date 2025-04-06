@@ -9,7 +9,11 @@
       <div 
         v-for="category in categories" 
         :key="category.id"
-        class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden cursor-pointer category-card"
+        class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden category-card"
+        :class="{
+          'border-2 border-red-500': category.type === 'unique',
+          'opacity-50 cursor-not-allowed': category.type === 'unique' && !canAccessUniqueCategories
+        }"
         @click="navigateToCategory(category)"
       >
         <div class="p-6 h-full flex flex-col">
@@ -23,7 +27,8 @@
                 'bg-green-100 text-green-800': category.type === 'default',
                 'bg-blue-100 text-blue-800': category.type === 'announcement',
                 'bg-purple-100 text-purple-800': category.type === 'discussion',
-                'bg-yellow-100 text-yellow-800': category.type === 'help'
+                'bg-yellow-100 text-yellow-800': category.type === 'help',
+                'bg-red-100 text-red-800 font-semibold': category.type === 'unique'
               }"
             >
               {{ getCategoryTypeName(category.type) }}
@@ -34,7 +39,7 @@
           </div>
           <div class="flex justify-between items-center mt-4 text-sm text-gray-500">
             <span>{{ category.topicsCount || 0 }} тем</span>
-            <span>{{ formatDate(category) }}</span>
+            <span>{{ formatLastPostDate(category.lastActivity, category.topicsCount) }}</span>
           </div>
         </div>
       </div>
@@ -71,14 +76,18 @@ export default {
     const store = useStore();
     const router = useRouter();
 
-    const categories = computed(() => {
-      const cats = store.getters['categories/getAllCategories'];
-      console.log('CategoryList.vue: Получены категории из геттера:', cats);
-      return cats;
-    });
-
+    // Получаем категории из store
+    const categories = computed(() => store.getters['categories/getAllCategories']);
     const loading = computed(() => store.state.categories.loading);
     const error = computed(() => store.state.categories.error);
+
+    // Проверяем, имеет ли пользователь доступ к уникальным категориям
+    const canAccessUniqueCategories = computed(() => {
+      const user = store.state.auth.user;
+      const userRole = store.state.profile.profile?.role || 'New User';
+      const allowedRoles = ['User', 'Moderator', 'Teacher', 'Administrator'];
+      return user && allowedRoles.includes(userRole);
+    });
 
     const getCategoryTypeName = (type) => {
       const types = {
@@ -86,91 +95,54 @@ export default {
         announcement: 'Объявления',
         discussion: 'Обсуждения',
         help: 'Помощь',
+        unique: 'Уникальная категория'
       };
       return types[type] || type;
     };
 
-    const determineLastActivity = (category) => {
-      console.log('CategoryList.vue: Определение последней активности для категории:', category.name, category);
-      
-      const timestamps = [];
-      
-      // Добавляем lastActivity категории, если оно есть
-      if (category.lastActivity && !isNaN(Number(category.lastActivity))) {
-        timestamps.push(Number(category.lastActivity));
-      }
-
-      // Проверяем посты
-      if (category.posts && typeof category.posts === 'object') {
-        Object.values(category.posts).forEach(post => {
-          if (post && post.createdAt) {
-            const timestamp = typeof post.createdAt === 'string' 
-              ? Date.parse(post.createdAt) 
-              : Number(post.createdAt);
-            if (!isNaN(timestamp)) {
-              timestamps.push(timestamp);
-            }
-          }
-          // Проверяем комментарии к постам
-          if (post && post.comments && typeof post.comments === 'object') {
-            Object.values(post.comments).forEach(comment => {
-              if (comment && comment.createdAt) {
-                const commentTimestamp = typeof comment.createdAt === 'string' 
-                  ? Date.parse(comment.createdAt) 
-                  : Number(comment.createdAt);
-                if (!isNaN(commentTimestamp)) {
-                  timestamps.push(commentTimestamp);
-                }
-              }
-            });
-          }
-        });
-      }
-
-      console.log('CategoryList.vue: Найденные временные метки для категории', category.name, timestamps);
-      return timestamps.length > 0 ? Math.max(...timestamps) : null;
-    };
-
-    const formatDate = (category) => {
-      console.log('CategoryList.vue: Форматирование даты для категории:', category.name, 'topicsCount:', category.topicsCount);
-      
-      // Если 0 тем, показываем "Нет активности"
-      if (!category.topicsCount || category.topicsCount === 0) {
+    const formatLastPostDate = (timestamp, topicsCount) => {
+      // Если нет постов (topicsCount = 0), показываем "Нет активности"
+      if (topicsCount === 0) {
         return 'Нет активности';
       }
-
-      // Ищем последнюю активность
-      const timestamp = determineLastActivity(category);
       
-      if (!timestamp || isNaN(Number(timestamp))) {
-        return 'Нет активности'; // Это не должно сработать при topicsCount > 0, но оставлено для безопасности
+      if (!timestamp) {
+        console.log('Нет timestamp для lastActivity:', timestamp);
+        return 'Нет активности';
       }
-
       try {
-        return format(new Date(Number(timestamp)), 'dd MMM yyyy HH:mm', { locale: ru });
+        // Поддержка timestamp в миллисекундах
+        const date = new Date(timestamp);
+        if (isNaN(date.getTime())) {
+          console.error('Некорректный timestamp:', timestamp);
+          return 'Ошибка даты';
+        }
+        return format(date, 'dd MMM yyyy HH:mm', { locale: ru });
       } catch (error) {
-        console.error('CategoryList.vue: Ошибка форматирования даты:', error, 'Timestamp:', timestamp);
-        return 'Нет активности';
+        console.error('Ошибка форматирования даты:', error, 'Timestamp:', timestamp);
+        return 'Ошибка даты';
       }
     };
 
     const navigateToCategory = (category) => {
       if (category && category.id) {
-        console.log('CategoryList.vue: Переход к категории:', category.id);
+        if (category.type === 'unique' && !canAccessUniqueCategories.value) {
+          return;
+        }
         router.push({
           name: 'CategoryPosts',
-          params: { categoryId: category.id },
+          params: { categoryId: category.id }
         });
       }
     };
 
+    // Загружаем категории при монтировании компонента
     onMounted(async () => {
-      console.log('CategoryList.vue: Монтирование компонента');
       try {
         await store.dispatch('categories/fetchCategories');
-        console.log('CategoryList.vue: Категории загружены');
+        console.log('Категории загружены:', categories.value);
       } catch (error) {
-        console.error('CategoryList.vue: Ошибка при загрузке категорий:', error);
+        console.error('Ошибка при загрузке категорий:', error);
       }
     });
 
@@ -179,10 +151,11 @@ export default {
       loading,
       error,
       getCategoryTypeName,
-      formatDate,
+      formatLastPostDate,
       navigateToCategory,
+      canAccessUniqueCategories
     };
-  },
+  }
 };
 </script>
 
@@ -193,5 +166,10 @@ export default {
 
 .category-card:hover {
   transform: translateY(-2px);
+}
+
+.category-card.opacity-50:hover {
+  transform: none;
+  shadow: none;
 }
 </style>

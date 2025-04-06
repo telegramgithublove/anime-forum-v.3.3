@@ -1,17 +1,27 @@
 <template>
   <div class="post-list-container min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 dark:from-gray-900 dark:to-purple-900">
     <div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      <!-- Заголовок секции -->
+      <!-- Навигация по вкладкам -->
       <div class="flex justify-between items-center mb-8">
-        <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white">
-          <span class="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600">
-            Обсуждения
-          </span>
-        </h1>
-        <button @click="createNewPost" 
-                class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full 
-                       shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 
-                       focus:ring-offset-2 focus:ring-purple-500 transform hover:scale-105 transition-all duration-200">
+        <div class="flex space-x-4">
+          <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white">
+            <span class="bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600">
+              Обсуждения
+            </span>
+          </h1>
+          <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white">
+            <span class="bg-clip-text text-transparent bg-gradient-to-r from-red-600 to-red-800">
+              Уникальная категория
+            </span>
+          </h1>
+        </div>
+        <button 
+          @click="createNewPost" 
+          class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-full 
+                 shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 
+                 focus:ring-offset-2 focus:ring-purple-500 transform hover:scale-105 transition-all duration-200"
+          :disabled="!canCreatePost"
+        >
           <i class="fas fa-plus mr-2"></i>
           Создать пост
         </button>
@@ -19,34 +29,32 @@
 
       <!-- Список постов -->
       <div class="space-y-6">
-        <article v-for="post in posts" :key="post.id" 
+        <article v-for="post in filteredPosts" :key="post.id" 
                  class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl hover:shadow-2xl transform hover:-translate-y-1 
                         transition-all duration-300 overflow-hidden">
           <div class="p-6">
             <!-- Заголовок и мета-информация -->
             <div class="flex items-center space-x-4 mb-4">
               <img :src="post.authorAvatar || '/image/empty_avatar.png'" 
-                   :alt="post.author"
+                   :alt="post.authorName || 'Автор'"
                    class="w-12 h-12 rounded-full object-cover ring-2 ring-purple-500/30" />
               <div>
                 <h2 class="text-xl font-bold text-gray-900 dark:text-white hover:text-purple-600 
                            dark:hover:text-purple-400 transition-colors duration-200">
-                  <router-link :to="{ name: 'post', params: { id: post.id }}">
+                  <router-link :to="{ name: 'PostDetails', params: { id: post.id, categoryId: post.categoryId } }">
                     {{ post.title }}
                   </router-link>
                 </h2>
                 <div class="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
-                  <span class="font-medium">{{ post.author }}</span>
-                  <span>&bull;</span>
+                  <span class="font-medium">{{ post.authorName || 'Гость' }}</span>
+                  <span>•</span>
                   <time>{{ formatDate(post.createdAt) }}</time>
                 </div>
               </div>
             </div>
 
             <!-- Превью контента -->
-            <p class="text-gray-600 dark:text-gray-300 mb-4 line-clamp-3">
-              {{ post.content }}
-            </p>
+            <p class="text-gray-600 dark:text-gray-300 mb-4 line-clamp-3" v-html="post.content"></p>
 
             <!-- Теги -->
             <div class="flex flex-wrap gap-2 mb-4">
@@ -67,15 +75,15 @@
                         class="group flex items-center space-x-2"
                         :class="{ 'text-red-500': post.isLiked, 'text-gray-500 dark:text-gray-400': !post.isLiked }">
                   <i class="fas fa-heart text-lg group-hover:scale-110 transition-transform"></i>
-                  <span class="font-medium">{{ post.likes }}</span>
+                  <span class="font-medium">{{ post.likesCount || 0 }}</span>
                 </button>
 
                 <!-- Комментарии -->
-                <router-link :to="{ name: 'post', params: { id: post.id }}" 
+                <router-link :to="{ name: 'PostDetails', params: { id: post.id, categoryId: post.categoryId }}" 
                            class="group flex items-center space-x-2 text-gray-500 dark:text-gray-400 
                                   hover:text-purple-600 dark:hover:text-purple-400">
                   <i class="fas fa-comment text-lg group-hover:scale-110 transition-transform"></i>
-                  <span class="font-medium">{{ post.comments }}</span>
+                  <span class="font-medium">{{ post.commentsCount || 0 }}</span>
                 </router-link>
 
                 <!-- Поделиться -->
@@ -104,6 +112,9 @@
             </div>
           </div>
         </article>
+        <div v-if="filteredPosts.length === 0" class="text-center text-gray-500 dark:text-gray-400">
+          Постов пока нет
+        </div>
       </div>
 
       <!-- Пагинация -->
@@ -132,113 +143,133 @@
   </div>
 </template>
 
-
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useStore } from 'vuex'
-import { format } from 'date-fns'
-import { ru } from 'date-fns/locale'
+import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useStore } from 'vuex';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
-const router = useRouter()
-const store = useStore()
+const router = useRouter();
+const store = useStore();
 
-const currentPage = ref(1)
-const postsPerPage = 10
+const currentPage = ref(1);
+const postsPerPage = 10;
 
 // Получаем посты из store
 const allPosts = computed(() => {
-  const postsObj = store.state.posts.posts || {}
-  return Object.values(postsObj).sort((a, b) => b.createdAt - a.createdAt)
-})
+  const postsObj = store.state.posts.posts || {};
+  return Object.values(postsObj).sort((a, b) => b.createdAt - a.createdAt);
+});
 
-// Пагинация
+// Фильтруем посты в зависимости от роли пользователя
+const filteredPosts = computed(() => {
+  const userRole = store.state.profile.profile?.role || 'New User';
+  const isAuthenticated = !!store.state.auth.user;
+  const uniqueCategoryIds = ['unique1', 'unique2', 'unique3'];
+
+  if (!isAuthenticated || userRole === 'New User') {
+    return allPosts.value.filter(post => !uniqueCategoryIds.includes(post.categoryId));
+  }
+  return allPosts.value;
+});
+
+const totalPages = computed(() => Math.ceil(filteredPosts.value.length / postsPerPage));
+
 const posts = computed(() => {
-  const start = (currentPage.value - 1) * postsPerPage
-  const end = start + postsPerPage
-  return allPosts.value.slice(start, end)
-})
-
-const totalPages = computed(() => Math.ceil(allPosts.value.length / postsPerPage))
+  const start = (currentPage.value - 1) * postsPerPage;
+  const end = start + postsPerPage;
+  return filteredPosts.value.slice(start, end);
+});
 
 // Форматирование даты
 const formatDate = (date) => {
-  return format(new Date(date), 'dd MMM yyyy HH:mm', { locale: ru })
-}
+  const parsedDate = typeof date === 'string' ? new Date(date) : new Date(date || Date.now());
+  return format(parsedDate, 'dd MMM yyyy HH:mm', { locale: ru });
+};
+
+// Проверка доступа к созданию постов
+const canCreatePost = computed(() => {
+  const userRole = store.state.profile.profile?.role || 'New User';
+  const isAuthenticated = !!store.state.auth.user;
+  return isAuthenticated && userRole !== 'New User';
+});
 
 // Обработчики действий
 const toggleLike = async (post) => {
   try {
-    await store.dispatch('posts/toggleLike', post.id)
+    await store.dispatch('posts/toggleLike', post.id);
   } catch (error) {
-    console.error('Ошибка при обновлении лайка:', error)
+    console.error('Ошибка при обновлении лайка:', error);
   }
-}
+};
 
 const sharePost = (post) => {
   const url = window.location.origin + router.resolve({
-    name: 'post',
-    params: { id: post.id }
-  }).href
+    name: 'PostDetails',
+    params: { id: post.id, categoryId: post.categoryId }
+  }).href;
   
   if (navigator.share) {
     navigator.share({
       title: post.title,
       text: post.content.substring(0, 100) + '...',
       url: url
-    })
+    });
   } else {
-    navigator.clipboard.writeText(url)
-    // TODO: Показать уведомление о копировании
+    navigator.clipboard.writeText(url);
+    // TODO: Добавить уведомление о копировании
   }
-}
+};
 
 const createNewPost = () => {
-  router.push({ name: 'create-post' })
-}
+  if (canCreatePost.value) {
+    router.push({ name: 'create-post' });
+  }
+};
 
 const canModifyPost = (post) => {
-  const currentUser = store.state.auth.user
-  return currentUser && (currentUser.uid === post.userId || currentUser.isAdmin)
-}
+  const currentUser = store.state.auth.user;
+  return currentUser && (currentUser.uid === post.authorId || currentUser.isAdmin);
+};
 
 const editPost = (post) => {
-  router.push({ name: 'edit-post', params: { id: post.id } })
-}
+  router.push({ name: 'edit-post', params: { id: post.id } });
+};
 
 const deletePost = async (post) => {
-  if (!confirm('Вы уверены, что хотите удалить этот пост?')) return
+  if (!confirm('Вы уверены, что хотите удалить этот пост?')) return;
   
   try {
-    await store.dispatch('posts/deletePost', post.id)
+    await store.dispatch('posts/deletePost', post.id);
   } catch (error) {
-    console.error('Ошибка при удалении поста:', error)
+    console.error('Ошибка при удалении поста:', error);
   }
-}
+};
 
 const prevPage = () => {
   if (currentPage.value > 1) {
-    currentPage.value--
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    currentPage.value--;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-}
+};
 
 const nextPage = () => {
   if (currentPage.value < totalPages.value) {
-    currentPage.value++
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    currentPage.value++;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-}
+};
 
 const fetchPosts = async () => {
   try {
-    await store.dispatch('posts/fetchPosts')
+    await store.dispatch('posts/fetchPosts');
   } catch (error) {
-    console.error('Ошибка при загрузке постов:', error)
+    console.error('Ошибка при загрузке постов:', error);
   }
-}
+};
 
 onMounted(() => {
-  fetchPosts()
-})
+  fetchPosts();
+});
 </script>

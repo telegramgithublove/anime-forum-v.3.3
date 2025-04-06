@@ -7,7 +7,7 @@ export default {
     posts: {},
     loading: false,
     error: null,
-    unsubscribe: null, // Для хранения функции отписки
+    unsubscribe: null,
   },
   mutations: {
     SET_POSTS(state, posts) {
@@ -56,10 +56,10 @@ export default {
         const postsRef = dbRef(db, 'posts');
         const newPostRef = push(postsRef);
         const postId = newPostRef.key;
-
+    
         const user = rootState.auth.user;
         if (!user) throw new Error('Требуется авторизация');
-
+    
         const postData = {
           id: postId,
           title,
@@ -75,18 +75,33 @@ export default {
           likes: {},
           comments: {},
         };
-
+    
+        // Сохраняем пост в корневой коллекции posts
         await set(newPostRef, postData);
-        console.log('posts.js: Пост создан:', postData);
-
+        console.log('posts.js: Пост создан в /posts:', postData);
+    
+        // Добавляем пост в categories/[categoryId]/posts
+        const categoryPostsRef = dbRef(db, `categories/${categoryId}/posts/${postId}`);
+        await set(categoryPostsRef, postData);
+        console.log('posts.js: Пост добавлен в /categories/[categoryId]/posts:', postData);
+    
+        // Обновляем postIds
         const categoryRef = dbRef(db, `categories/${categoryId}/postIds/${postId}`);
         await set(categoryRef, true);
-
+    
+        // Обновляем postsCount
         const categoryCountRef = dbRef(db, `categories/${categoryId}/postsCount`);
         const snapshot = await get(categoryCountRef);
         const currentCount = snapshot.val() || 0;
         await set(categoryCountRef, currentCount + 1);
-
+    
+        // Обновляем lastActivity
+        const categoryUpdateRef = dbRef(db, `categories/${categoryId}`);
+        await update(categoryUpdateRef, {
+          lastActivity: new Date(postData.createdAt).getTime()
+        });
+        console.log('posts.js: lastActivity обновлен для категории:', categoryId);
+    
         commit('SET_POSTS', { [postId]: postData });
         return postId;
       } catch (error) {
@@ -97,7 +112,6 @@ export default {
         commit('SET_LOADING', false);
       }
     },
-
     async fetchPostsByCategory({ commit, state, rootState }, categoryId) {
       commit('SET_LOADING', true);
       try {
@@ -270,11 +284,10 @@ export default {
           }
         });
       } catch (error) {
-        console.error('Ошибка при подписке на обновления просмотров:', error);
+        console.error('posts.js: Ошибка при подписке на обновления просмотров:', error);
       }
     },
 
-    // Новый action для получения всех постов
     async fetchAllPosts({ commit }) {
       commit('SET_LOADING', true);
       try {
@@ -321,7 +334,6 @@ export default {
         views: post.views || 0,
       };
     },
-    // Новый геттер для популярных постов
     getPopularPosts: (state) => {
       return Object.values(state.posts)
         .filter(post => post.views !== undefined)

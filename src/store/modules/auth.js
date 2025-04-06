@@ -158,9 +158,9 @@ const actions = {
         commit('SET_AUTHENTICATED', true);
         commit('SET_TOKEN', 'superuser-token');
         localStorage.setItem('superuserData', JSON.stringify(superuserData));
-        localStorage.setItem('isAuthenticated', 'true'); // Добавляем для роутера
-        localStorage.setItem('userRole', 'superuser');   // Добавляем для роутера
-        localStorage.setItem('userId', superuserUid);    // Добавляем для согласованности
+        localStorage.setItem('isAuthenticated', 'true');
+        localStorage.setItem('userRole', 'superuser');
+        localStorage.setItem('userId', superuserUid);
         console.log('auth.js: Успешный вход суперпользователя:', superuserData);
 
         if (router) {
@@ -207,7 +207,7 @@ const actions = {
         console.log('auth.js: Успешный вход, пользователь:', userToStore);
 
         if (userToStore.role === 'superuser' && userToStore.email === 'superuser@example.com' && router) {
-          router.push('/admin');
+          routerENDpush('/admin');
         }
 
         return { success: true, user: userToStore };
@@ -247,8 +247,98 @@ const actions = {
     }
   },
 
-  // Остальные действия (registration, setUser, etc.) остаются без изменений
-  async registration({ commit }, userData) { /* ... */ },
+  async registration({ commit }, userData) {
+    console.log('auth.js: Вызов действия registration с данными:', userData);
+    try {
+      // Проверка обязательных полей
+      if (!userData.username || !userData.email || !userData.password || !userData.passwordConfirmation) {
+        throw new Error('Все поля обязательны для заполнения');
+      }
+      if (userData.password !== userData.passwordConfirmation) {
+        throw new Error('Пароли не совпадают');
+      }
+
+      // Проверка уникальности username и email
+      const usersRef = databaseRef(database, 'users');
+      const snapshot = await get(usersRef);
+      if (snapshot.exists()) {
+        const users = snapshot.val();
+        const usernameTaken = Object.values(users).some(user => user.profile?.username === userData.username);
+        const emailTaken = Object.values(users).some(user => user.email === userData.email);
+        if (usernameTaken) throw new Error('Этот username уже занят');
+        if (emailTaken) throw new Error('Этот email уже зарегистрирован');
+      }
+
+      // Регистрация в Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(firebaseAuth, userData.email, userData.password);
+      const user = userCredential.user;
+      console.log('auth.js: Пользователь зарегистрирован в Firebase:', { uid: user.uid, email: user.email });
+
+      // Отправка письма для верификации email
+      await sendEmailVerification(user, { url: window.location.origin + '/verify-email' });
+      console.log('auth.js: Письмо для подтверждения email отправлено');
+
+      // Создание профиля пользователя
+      const userRef = databaseRef(database, `users/${user.uid}`);
+      const userProfile = {
+        username: userData.username,
+        avatarUrl: '/image/empty_avatar.png',
+        signature: 'Новичок'
+      };
+
+      const userDataForDB = {
+        uid: user.uid,
+        email: userData.email,
+        role: 'user', // Начальная роль
+        profile: userProfile,
+        settings: {
+          profileVisibility: true,
+          notifyMessages: true,
+          notifyReplies: true,
+          theme: 'light'
+        },
+        emailVerified: false,
+        createdAt: Date.now(),
+        lastLogin: Date.now(),
+        status: 'active',
+        balance: 0
+      };
+
+      // Сохранение данных в Realtime Database
+      await set(userRef, userDataForDB);
+      console.log('auth.js: Данные пользователя записаны в базу:', userDataForDB);
+
+      // Подготовка данных для состояния Vuex
+      const userToStore = {
+        uid: user.uid,
+        email: userData.email,
+        profile: userProfile,
+        role: userDataForDB.role,
+        emailVerified: userDataForDB.emailVerified,
+        settings: userDataForDB.settings,
+        balance: userDataForDB.balance
+      };
+
+      // Обновление состояния Vuex
+      commit('SET_USER', userToStore);
+      commit('SET_AUTHENTICATED', true);
+      commit('SET_TOKEN', await user.getIdToken());
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', userToStore.role);
+      localStorage.setItem('userId', userToStore.uid);
+      console.log('auth.js: Состояние пользователя обновлено в store:', userToStore);
+
+      // Возвращаем результат
+      return { success: true, user: userToStore };
+    } catch (error) {
+      console.error('auth.js: Ошибка при регистрации:', error);
+      commit('SET_ERROR', error.message);
+      throw error; // Пробрасываем ошибку для обработки в компоненте
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
   async setUser({ commit }, userData) { /* ... */ },
   async fetchUserData({ commit, state }, uid) { /* ... */ },
   clearUsersCache({ commit }) { /* ... */ },

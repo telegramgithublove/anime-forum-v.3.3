@@ -56,7 +56,6 @@ const actions = {
       await dispatch('profile/updateRole', { userId, role: newMilestone.name }, { root: true });
     }
   },
-  // Новое действие для обновления роли на основе активированной карточки
   async updateRoleBasedOnCard({ rootState, dispatch }, role) {
     const userId = rootState.auth.user?.uid;
     if (!userId) {
@@ -121,6 +120,12 @@ const getters = {
     const totalRange = nextMilestone.posts - currentMilestone.posts;
 
     return Math.min(Math.max((postsInRange / totalRange) * 100, 0), 100);
+  },
+  canAccessUniqueCategories: (state, getters, rootState) => {
+    const userRole = rootState.profile.profile?.role || 'New User';
+    const isAuthenticated = !!rootState.auth.user;
+    const allowedRoles = ['User', 'Moderator', 'Teacher', 'Administrator'];
+    return isAuthenticated && allowedRoles.includes(userRole);
   },
 };
 

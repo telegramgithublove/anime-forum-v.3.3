@@ -48,6 +48,9 @@
                 <option value="announcement">Объявления</option>
                 <option value="discussion">Обсуждения</option>
                 <option value="help">Помощь</option>
+                <option value="unique" class="text-red-600 font-semibold">
+                  Уникальная категория
+                </option>
               </select>
             </div>
 
@@ -55,6 +58,7 @@
               <button
                 type="submit"
                 class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200"
+                :disabled="isLoading"
               >
                 {{ editingCategory ? 'Сохранить' : 'Создать' }}
               </button>
@@ -75,6 +79,7 @@
             v-for="category in categories"
             :key="category.id"
             class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow duration-200"
+            :class="{ 'border-red-500': category.type === 'unique' }"
           >
             <div class="flex justify-between items-start">
               <div>
@@ -85,7 +90,8 @@
                     'bg-green-100 text-green-800': category.type === 'default',
                     'bg-blue-100 text-blue-800': category.type === 'announcement',
                     'bg-purple-100 text-purple-800': category.type === 'discussion',
-                    'bg-yellow-100 text-yellow-800': category.type === 'help'
+                    'bg-yellow-100 text-yellow-800': category.type === 'help',
+                    'bg-red-100 text-red-800 font-semibold': category.type === 'unique'
                   }"
                 >
                   {{ getCategoryTypeName(category.type) }}
@@ -150,13 +156,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { useStore } from 'vuex';
 import { database } from '@/plugins/firebase';
 import { ref as dbRef, push, set, remove, get, onValue } from 'firebase/database';
-
-const router = useRouter();
-const store = useStore();
 
 const categories = ref([]);
 const showAddForm = ref(false);
@@ -176,7 +177,8 @@ const getCategoryTypeName = (type) => {
     default: 'Обычная',
     announcement: 'Объявления',
     discussion: 'Обсуждения',
-    help: 'Помощь'
+    help: 'Помощь',
+    unique: 'Уникальная категория'
   };
   return types[type] || type;
 };
@@ -197,9 +199,9 @@ const handleSubmit = async () => {
     const categoriesRef = dbRef(database, 'categories');
 
     if (editingCategory.value) {
-      // Обновление существующей категории
       const categoryRef = dbRef(database, `categories/${editingCategory.value.id}`);
       const updates = {
+        ...editingCategory.value,
         name: categoryForm.value.name,
         description: categoryForm.value.description,
         type: categoryForm.value.type,
@@ -209,7 +211,6 @@ const handleSubmit = async () => {
       await set(categoryRef, updates);
       console.log('Категория обновлена:', editingCategory.value.id);
     } else {
-      // Создание новой категории
       const newCategoryData = {
         name: categoryForm.value.name,
         description: categoryForm.value.description,
@@ -217,13 +218,12 @@ const handleSubmit = async () => {
         createdAt: Date.now(),
         lastActivity: Date.now(),
         topicsCount: 0,
-        postsCount: 0
+        posts: {}
       };
 
       const newCategoryRef = push(categoriesRef);
       await set(newCategoryRef, newCategoryData);
-      
-      console.log('Создана новая категория:', newCategoryRef.key);
+      console.log('Создана новая категория с ключом:', newCategoryRef.key);
     }
     resetForm();
   } catch (error) {
@@ -258,23 +258,16 @@ const deleteCategory = async () => {
 
   try {
     isLoading.value = true;
-    // Сначала проверяем, есть ли темы в этой категории
-    const topicsRef = dbRef(database, 'topics');
-    const topicsSnapshot = await get(topicsRef);
+    const postsRef = dbRef(database, `categories/${categoryToDelete.value.id}/posts`);
+    const postsSnapshot = await get(postsRef);
     
-    if (topicsSnapshot.exists()) {
-      const topics = Object.values(topicsSnapshot.val());
-      const hasTopics = topics.some(topic => topic.categoryId === categoryToDelete.value.id);
-      
-      if (hasTopics) {
-        alert('Нельзя удалить категорию, содержащую темы. Сначала удалите все темы в этой категории.');
-        showDeleteModal.value = false;
-        categoryToDelete.value = null;
-        return;
-      }
+    if (postsSnapshot.exists() && Object.keys(postsSnapshot.val()).length > 0) {
+      alert('Нельзя удалить категорию, содержащую посты. Сначала удалите все посты в этой категории.');
+      showDeleteModal.value = false;
+      categoryToDelete.value = null;
+      return;
     }
 
-    // Если тем нет, удаляем категорию
     await remove(dbRef(database, `categories/${categoryToDelete.value.id}`));
     console.log('Категория удалена:', categoryToDelete.value.id);
     
@@ -288,18 +281,7 @@ const deleteCategory = async () => {
   }
 };
 
-// Проверка прав доступа
-const checkAccess = () => {
-  const user = store.state.auth.user;
-  if (!user || (user.role !== 'admin' && user.role !== 'superuser')) {
-    router.push('/');
-  }
-};
-
 onMounted(() => {
-  checkAccess();
-  
-  // Слушаем изменения в категориях
   const categoriesRef = dbRef(database, 'categories');
   
   onValue(categoriesRef, (snapshot) => {
@@ -309,9 +291,11 @@ onMounted(() => {
         categories.value = Object.entries(data).map(([id, category]) => ({
           id,
           ...category
-        })).sort((a, b) => b.createdAt - a.createdAt); // Сортируем по дате создания
+        })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        console.log('Категории загружены:', categories.value);
       } else {
         categories.value = [];
+        console.log('Категории не найдены');
       }
     } catch (error) {
       console.error('Ошибка при обработке данных категорий:', error);
@@ -323,3 +307,9 @@ onMounted(() => {
   });
 });
 </script>
+
+<style scoped>
+option.text-red-600 {
+  color: #dc2626;
+}
+</style>

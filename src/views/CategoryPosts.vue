@@ -167,12 +167,31 @@ let unsubscribe = null;
 
 const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
 
+// Статические уникальные категории (заглушки для проверки)
+const uniqueCategories = {
+  'unique1': { name: 'Устаревшие ремёсла', description: 'Исследование исчезнувших профессий в аниме и манге.' },
+  'unique2': { name: 'Синестезия в аниме', description: 'Визуальные и звуковые эксперименты в тайтлах.' },
+  'unique3': { name: 'Вымышленные традиции', description: 'Уникальные ритуалы выдуманных миров.' },
+};
+
 onMounted(async () => {
   try {
     isLoading.value = true;
     loadingProgress.value = 0;
     const db = getDatabase();
     
+    // Проверяем, является ли категория уникальной (статической)
+    if (uniqueCategories[categoryId]) {
+      categoryName.value = uniqueCategories[categoryId].name;
+      categoryDescription.value = uniqueCategories[categoryId].description;
+      loadingProgress.value = 100;
+      isLoading.value = false;
+      // Пока нет постов для уникальных категорий, они пустые
+      posts.value = [];
+      return;
+    }
+
+    // Загрузка данных из Firebase для обычных категорий
     const categoryRef = dbRef(db, `categories/${categoryId}`);
     loadingProgress.value = 20;
     const categorySnapshot = await get(categoryRef);
@@ -242,6 +261,8 @@ onMounted(async () => {
         }
         isLoading.value = false;
       });
+    } else {
+      throw new Error('Категория не найдена');
     }
   } catch (error) {
     console.error('Error loading posts:', error);
