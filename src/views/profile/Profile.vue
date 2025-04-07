@@ -64,7 +64,7 @@
               <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">Ваш прогресс</h2>
               <ProgressBar />
               <p class="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                Создано тем: {{ createdPosts }} / {{ totalPosts }}
+                Баланс: {{ currentPreycoinBalance }} / {{ totalPreycoins }} Preycoins
               </p>
             </div>
             <TestProgress />
@@ -142,8 +142,8 @@ const username = computed({
   set: (value) => store.commit('auth/UPDATE_USERNAME', value, { root: true }),
 });
 const avatarUrl = computed(() => store.getters['auth/getUserAvatar']);
-const createdPosts = computed(() => store.getters['progress/getCreatedPosts']);
-const totalPosts = computed(() => store.state.progress.totalPosts);
+const currentPreycoinBalance = computed(() => store.getters['earn/userBalance'] || 0);
+const totalPreycoins = computed(() => store.state.progress.totalPreycoins || 1800);
 const milestones = computed(() => store.getters['progress/getMilestones']);
 
 const usernameError = ref('');
@@ -189,13 +189,13 @@ const closeCelebration = () => {
 };
 
 const checkForNewMilestone = () => {
-  const currentPosts = createdPosts.value;
+  const currentPreycoins = currentPreycoinBalance.value;
   const currentMilestone = milestones.value.find(
-    (m) => currentPosts >= m.posts && currentPosts < (milestones.value[milestones.value.indexOf(m) + 1]?.posts || Infinity)
+    (m) => currentPreycoins >= m.preycoins && currentPreycoins < (milestones.value[milestones.value.indexOf(m) + 1]?.preycoins || Infinity)
   ) || milestones.value[0];
 
   const lastSeenRole = localStorage.getItem('lastSeenRole') || 'New User';
-  if (currentMilestone.name !== lastSeenRole && currentMilestone.posts > 0) {
+  if (currentMilestone.name !== lastSeenRole && currentMilestone.preycoins > 0) {
     newMilestone.value = currentMilestone;
     showCelebration.value = true;
     triggerConfetti();
@@ -213,19 +213,24 @@ const triggerConfetti = () => {
 
 onMounted(async () => {
   try {
+    // Инициализируем auth и ждем завершения
+    await store.dispatch('auth/initAuth');
     const userId = currentUserId.value;
+
     if (userId) {
       console.log('Загрузка профиля для userId:', userId);
       await store.dispatch('profile/fetchProfile', userId);
       await store.dispatch('progress/initializeProgress');
       checkForNewMilestone();
     } else {
-      console.error('Нет userId для загрузки профиля');
-      toast.error('Пользователь не авторизован');
+      console.error('Нет userId после initAuth, пользователь не авторизован');
+      toast.error('Пользователь не авторизован, перенаправляем на страницу входа');
+      router.push('/login'); // Перенаправление на страницу входа
     }
   } catch (error) {
-    console.error('Ошибка загрузки профиля:', error);
+    console.error('Ошибка в onMounted:', error);
     toast.error('Не удалось загрузить профиль');
+    router.push('/login'); // Перенаправление в случае ошибки
   }
 });
 </script>

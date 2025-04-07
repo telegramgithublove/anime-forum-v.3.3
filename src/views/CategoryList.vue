@@ -101,7 +101,6 @@ export default {
     };
 
     const formatLastPostDate = (timestamp, topicsCount) => {
-      // Если нет постов (topicsCount = 0), показываем "Нет активности"
       if (topicsCount === 0) {
         return 'Нет активности';
       }
@@ -111,7 +110,6 @@ export default {
         return 'Нет активности';
       }
       try {
-        // Поддержка timestamp в миллисекундах
         const date = new Date(timestamp);
         if (isNaN(date.getTime())) {
           console.error('Некорректный timestamp:', timestamp);
@@ -136,7 +134,6 @@ export default {
       }
     };
 
-    // Загружаем категории при монтировании компонента
     onMounted(async () => {
       try {
         await store.dispatch('categories/fetchCategories');
@@ -162,7 +159,7 @@ export default {
 <style scoped>
 .category-card {
   transition: all 0.3s ease;
-  cursor: pointer; /* Добавляем курсор pointer для всех категорий */
+  cursor: pointer;
 }
 
 .category-card:hover {

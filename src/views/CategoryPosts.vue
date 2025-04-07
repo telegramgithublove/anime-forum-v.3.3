@@ -30,7 +30,7 @@
           </button>
           <router-link 
             v-else 
-            :to="{ name: 'create-post', params: { categoryId } }" 
+            :to="{ name: 'create-post', params: { categoryId }, query: { isUnique: isUniqueCategory } }" 
             class="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-500 text-white font-medium rounded-full hover:from-purple-700 hover:to-indigo-600 transform hover:-translate-y-1 transition-all duration-300 shadow-lg"
           >
             <i class="fas fa-plus mr-2"></i>
@@ -168,27 +168,17 @@ let unsubscribeProfiles = new Map();
 
 const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
 
-// Статические уникальные категории
-const uniqueCategories = {
-  'unique1': { name: 'Устаревшие ремёсла', description: 'Исследование исчезнувших профессий в аниме и манге.' },
-  'unique2': { name: 'Синестезия в аниме', description: 'Визуальные и звуковые эксперименты в тайтлах.' },
-  'unique3': { name: 'Вымышленные традиции', description: 'Уникальные ритуалы выдуманных миров.' },
-};
+// Список уникальных категорий по ID
+const uniqueCategoryIds = ['-ON8y3Nme64DW77mgchz', '-ON8xyw9CeIJElmRkeJ3', '-ON8xsw1oul4hRx15VMS'];
+
+// Проверка, является ли категория уникальной
+const isUniqueCategory = computed(() => uniqueCategoryIds.includes(categoryId));
 
 onMounted(async () => {
   try {
     isLoading.value = true;
     loadingProgress.value = 0;
     const db = getDatabase();
-
-    if (uniqueCategories[categoryId]) {
-      categoryName.value = uniqueCategories[categoryId].name;
-      categoryDescription.value = uniqueCategories[categoryId].description;
-      loadingProgress.value = 100;
-      isLoading.value = false;
-      posts.value = [];
-      return;
-    }
 
     const categoryRef = dbRef(db, `categories/${categoryId}`);
     loadingProgress.value = 20;

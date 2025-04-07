@@ -5,7 +5,7 @@
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-4">
           <router-link 
-            :to="{ name: 'CategoryPosts' }" 
+            :to="{ name: 'CategoryPosts', params: { categoryId: categoryId } }" 
             class="text-gray-600 hover:text-purple-600 transition-colors duration-200"
           >
             <i class="fas fa-arrow-left text-xl"></i>
@@ -437,6 +437,10 @@ const store = useStore();
 const toast = useToast();
 const categoryId = computed(() => route.params.categoryId || '-default-category');
 
+// Список уникальных категорий
+const uniqueCategoryIds = ['-ON8y3Nme64DW77mgchz', '-ON8xyw9CeIJElmRkeJ3', '-ON8xsw1oul4hRx15VMS'];
+const isUniqueCategory = computed(() => uniqueCategoryIds.includes(categoryId.value));
+
 // Определение refs для input'ов
 const imageInput = ref(null);
 const videoInput = ref(null);
@@ -590,9 +594,9 @@ const removeFormat = (index) => {
 };
 
 // Обработчики для форматирования и ввода
-const applyFormat = (format) => {
+const applyFormat = (command) => {
   if (editor.value) {
-    document.execCommand(format, false, null);
+    document.execCommand(command, false, null);
     editor.value.focus();
   }
 };
@@ -653,6 +657,12 @@ const validateAndSubmit = async () => {
     const user = store.state.auth.user;
     if (!user) throw new Error('Пользователь не авторизован');
 
+    const userRole = store.state.profile.profile?.role || 'New User';
+    if (userRole === 'New User' && isUniqueCategory.value) {
+      toast.error('New User не имеет доступа к созданию постов в уникальных категориях!');
+      return;
+    }
+
     // Принудительно обновляем профиль перед созданием поста
     await store.dispatch('profile/fetchProfile', user.uid);
     const authorName = store.getters['auth/getUsername'] || 'Гость';
@@ -671,8 +681,8 @@ const validateAndSubmit = async () => {
       createdAt: new Date().toISOString(),
       authorId: user.uid,
       userId: user.uid,
-      authorName, // Используем актуальный ник
-      authorAvatar, // Используем актуальный аватар
+      authorName,
+      authorAvatar,
       likes: {},
       likesCount: 0,
       views: 0,
@@ -687,8 +697,8 @@ const validateAndSubmit = async () => {
     await store.dispatch('topics/addPostToCategory', { postId, postData });
     console.log('[CreatePost] Пост добавлен в /categories/', categoryId.value);
 
-    await store.dispatch('progress/incrementPosts');
-    console.log('[CreatePost] Прогресс увеличен на 1 пост');
+    await store.dispatch('progress/incrementPosts', { isUniqueCategory: isUniqueCategory.value });
+    console.log('[CreatePost] Прогресс увеличен на 1 пост, isUniqueCategory:', isUniqueCategory.value);
 
     toast.success('Пост успешно создан');
     await clearForm();

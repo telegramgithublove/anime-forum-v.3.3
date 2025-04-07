@@ -1,6 +1,6 @@
 <template>
   <div class="relative w-full h-24 bg-gray-200 rounded-full overflow-hidden shadow-xl border border-gray-300/50">
-    <!-- Полоса прогресса -->
+    <!-- Progress bar -->
     <div
       class="h-full bg-gradient-to-r from-emerald-400 via-indigo-500 to-purple-600 transition-all duration-1000 ease-in-out relative shadow-inner"
       :style="{ width: `${progress}%` }"
@@ -8,11 +8,11 @@
       <span
         class="absolute right-4 top-1/2 transform -translate-y-1/2 text-white font-semibold text-lg drop-shadow-lg tracking-wide"
       >
-        {{ Math.round(progress) }}%
+        {{ currentPreycoinBalance }} Preycoins
       </span>
     </div>
 
-    <!-- Вехи и стрелки -->
+    <!-- Milestones and arrows -->
     <div
       v-for="(milestone, index) in milestones"
       :key="milestone.name"
@@ -41,7 +41,7 @@
         {{ milestone.name }}
       </span>
 
-      <!-- Стрелка вправо (кроме последней вехи) -->
+      <!-- Right arrow (except for the last milestone) -->
       <svg
         v-if="index < milestones.length - 1"
         class="absolute arrow"
@@ -74,17 +74,19 @@ import { useStore } from 'vuex';
 import anime from 'animejs/lib/anime.es.js';
 import 'animate.css';
 import emptyFolderImg from '@/assets/images/empty-folder.png';
+import { useToast } from 'vue-toastification';
 
 const store = useStore();
+const toast = useToast();
 
 const progress = computed(() => store.getters['progress/getProgress'] || 0);
 const milestones = computed(() => store.getters['progress/getMilestones'] || []);
-const createdPosts = computed(() => store.getters['progress/getCreatedPosts'] || 0);
+const currentPreycoinBalance = computed(() => store.getters['earn/userBalance'] || 0);
 
 const wasMilestoneReached = ref([]);
 
 const isMilestoneReached = (index) => {
-  return createdPosts.value >= (milestones.value[index]?.posts || 0);
+  return currentPreycoinBalance.value >= (milestones.value[index]?.preycoins || 0);
 };
 
 const markMilestoneReached = (index) => {
@@ -96,14 +98,15 @@ const markMilestoneReached = (index) => {
       rotate: '360deg',
       duration: 1000,
       easing: 'easeInOutCubic',
-      elasticity: 300
+      elasticity: 300,
     });
+    toast.success(`Congrats! You've reached ${milestones.value[index].name} with ${currentPreycoinBalance.value} Preycoins!`);
   }
 };
 
-watch(createdPosts, (newValue) => {
+watch(currentPreycoinBalance, (newValue) => {
   milestones.value.forEach((milestone, index) => {
-    if (newValue >= milestone.posts && !wasMilestoneReached.value[index]) {
+    if (newValue >= milestone.preycoins && !wasMilestoneReached.value[index]) {
       setTimeout(() => {
         markMilestoneReached(index);
       }, 200);
@@ -114,7 +117,7 @@ watch(createdPosts, (newValue) => {
 onMounted(() => {
   store.dispatch('progress/initializeProgress');
   milestones.value.forEach((milestone, index) => {
-    if (createdPosts.value >= milestone.posts) {
+    if (currentPreycoinBalance.value >= milestone.preycoins) {
       wasMilestoneReached.value[index] = true;
     }
   });
@@ -137,17 +140,17 @@ const calculateArrowWidth = (index) => {
 };
 
 const handleImageError = (index, event) => {
-  console.error(`Ошибка загрузки изображения для ${milestones.value[index]?.name || 'unknown'}:`, event);
+  console.error(`Error loading image for ${milestones.value[index]?.name || 'unknown'}:`, event);
   event.target.src = emptyFolderImg;
 };
 
 watch(milestones, (newMilestones) => {
   if (!newMilestones || !Array.isArray(newMilestones)) {
-    console.warn('Новые milestones некорректны:', newMilestones);
+    console.warn('New milestones are invalid:', newMilestones);
     wasMilestoneReached.value = [];
     return;
   }
-  wasMilestoneReached.value = newMilestones.map((milestone) => createdPosts.value >= (milestone?.posts || 0));
+  wasMilestoneReached.value = newMilestones.map((milestone) => currentPreycoinBalance.value >= (milestone?.preycoins || 0));
 }, { deep: true });
 </script>
 
