@@ -3,6 +3,9 @@ import luffyImg from '@/assets/images/luffy.png';
 import leviImg from '@/assets/images/levi.png';
 import gokuImg from '@/assets/images/goku.png';
 import sailorMoonImg from '@/assets/images/sailor-moon.png';
+import { useToast } from 'vue-toastification';
+
+const toast = useToast();
 
 const state = {
   createdPosts: parseInt(localStorage.getItem('userCreatedPosts') || '0'),
@@ -10,8 +13,8 @@ const state = {
   milestones: [
     { name: 'New User', posts: 0, image: narutoImg, position: 0 },
     { name: 'User', posts: 200, image: luffyImg, position: 25 },
-    { name: 'Moderator', posts: 700, image: leviImg, position: 42 },
-    { name: 'Teacher', posts: 1000, image: sailorMoonImg, position: 65 },
+    { name: 'Moderator', posts: 700, image: leviImg, position: 50 },
+    { name: 'Teacher', posts: 1000, image: sailorMoonImg, position: 75 },
     { name: 'Administrator', posts: 1800, image: gokuImg, position: 100 },
   ],
 };
@@ -54,6 +57,12 @@ const actions = {
     if (newMilestone && newMilestone.name !== rootState.profile.profile.role) {
       console.log(`progress.js: Достигнута веха ${newMilestone.name} при ${newPostCount} постах, обновляем роль`);
       await dispatch('profile/updateRole', { userId, role: newMilestone.name }, { root: true });
+      
+      // Показываем поздравление только при точном достижении роли
+      const milestonePosts = state.milestones.map(m => m.posts);
+      if (milestonePosts.includes(newPostCount)) {
+        toast.success(`Поздравляем! Вы достигли роли ${newMilestone.name} с ${newPostCount} постами!`);
+      }
     }
   },
   async updateRoleBasedOnCard({ rootState, dispatch }, role) {
@@ -89,7 +98,7 @@ const getters = {
     ) || state.milestones[0];
     const nextMilestone = state.milestones[state.milestones.indexOf(currentMilestone) + 1];
 
-    if (!nextMilestone) return currentMilestone.position;
+    if (!nextMilestone) return 100;
 
     const postsInRange = state.createdPosts - currentMilestone.posts;
     const totalRange = nextMilestone.posts - currentMilestone.posts;

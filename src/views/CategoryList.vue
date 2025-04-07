@@ -162,6 +162,7 @@ export default {
 <style scoped>
 .category-card {
   transition: all 0.3s ease;
+  cursor: pointer; /* Добавляем курсор pointer для всех категорий */
 }
 
 .category-card:hover {

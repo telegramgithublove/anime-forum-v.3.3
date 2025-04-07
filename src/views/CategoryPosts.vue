@@ -59,7 +59,7 @@
                     {{ post.authorName }}
                   </span>
                   <p class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ post.authorRole }}
+                    {{ getAuthorRole(post.authorId) }}
                   </p>
                 </div>
                 <div class="flex-1">
@@ -163,11 +163,12 @@ const isLoadingLikes = ref(false);
 const loadingProgress = ref(0);
 const itemsPerPage = 10;
 const attentionModal = ref(null);
-let unsubscribe = null;
+let unsubscribePosts = null;
+let unsubscribeProfiles = new Map();
 
 const isAuthenticated = computed(() => store.getters['auth/isAuthenticated']);
 
-// Статические уникальные категории (заглушки для проверки)
+// Статические уникальные категории
 const uniqueCategories = {
   'unique1': { name: 'Устаревшие ремёсла', description: 'Исследование исчезнувших профессий в аниме и манге.' },
   'unique2': { name: 'Синестезия в аниме', description: 'Визуальные и звуковые эксперименты в тайтлах.' },
@@ -179,31 +180,28 @@ onMounted(async () => {
     isLoading.value = true;
     loadingProgress.value = 0;
     const db = getDatabase();
-    
-    // Проверяем, является ли категория уникальной (статической)
+
     if (uniqueCategories[categoryId]) {
       categoryName.value = uniqueCategories[categoryId].name;
       categoryDescription.value = uniqueCategories[categoryId].description;
       loadingProgress.value = 100;
       isLoading.value = false;
-      // Пока нет постов для уникальных категорий, они пустые
       posts.value = [];
       return;
     }
 
-    // Загрузка данных из Firebase для обычных категорий
     const categoryRef = dbRef(db, `categories/${categoryId}`);
     loadingProgress.value = 20;
     const categorySnapshot = await get(categoryRef);
-    
+
     if (categorySnapshot.exists()) {
       const categoryData = categorySnapshot.val();
       categoryName.value = categoryData.name;
       categoryDescription.value = categoryData.description;
       loadingProgress.value = 40;
-      
+
       const postsRef = dbRef(db, `categories/${categoryId}/posts`);
-      unsubscribe = onValue(postsRef, async (snapshot) => {
+      unsubscribePosts = onValue(postsRef, async (snapshot) => {
         loadingProgress.value = 80;
         if (snapshot.exists()) {
           const postsData = snapshot.val();
@@ -212,27 +210,12 @@ onMounted(async () => {
           const postsArray = await Promise.all(Object.entries(postsData).map(async ([id, post]) => {
             let authorName = post.authorName || 'Гость';
             let authorAvatar = post.authorAvatar || '/image/empty_avatar.png';
-            let authorRole = 'New User';
 
-            if (post.authorId && post.authorId !== currentUserId) {
-              try {
-                let authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
-                if (!authorProfile) {
-                  await store.dispatch('profile/fetchProfile', post.authorId);
-                  authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
-                }
-                if (authorProfile) {
-                  authorName = post.authorName || authorProfile.username || 'Гость';
-                  authorAvatar = post.authorAvatar || authorProfile.avatarUrl || '/image/empty_avatar.png';
-                  authorRole = authorProfile.role || 'New User';
-                }
-              } catch (error) {
-                console.error('[CategoryPosts] Failed to fetch profile:', error);
-              }
-            } else if (post.authorId === currentUserId) {
-              authorName = store.getters['auth/getUsername'];
-              authorAvatar = store.getters['auth/getUserAvatar'];
-              authorRole = store.getters['auth/userRole'] || 'New User';
+            if (post.authorId) {
+              await subscribeToProfile(post.authorId);
+              const authorProfile = store.getters['profile/getProfileByUserId'](post.authorId);
+              authorName = authorProfile.username || post.authorName || 'Гость';
+              authorAvatar = authorProfile.avatarUrl || post.authorAvatar || '/image/empty_avatar.png';
             }
 
             const likes = post.likes || {};
@@ -246,7 +229,7 @@ onMounted(async () => {
               ...post,
               authorName,
               authorAvatar,
-              authorRole,
+              authorId: post.authorId,
               tags: Array.isArray(post.tags) ? post.tags : (post.tags ? [post.tags] : ['форум']),
               likes,
               likesCount,
@@ -271,15 +254,37 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (unsubscribe) unsubscribe();
+  if (unsubscribePosts) unsubscribePosts();
+  unsubscribeProfiles.forEach(unsub => unsub());
+  unsubscribeProfiles.clear();
 });
 
-// Сортировка постов по убыванию createdAt (последние сверху)
+const subscribeToProfile = async (userId) => {
+  if (!unsubscribeProfiles.has(userId)) {
+    const db = getDatabase();
+    const profileRef = dbRef(db, `users/${userId}/profile`);
+    const unsub = onValue(profileRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const profileData = snapshot.val();
+        store.commit('profile/SET_PROFILE_CACHE', { userId, profile: { ...profileData, userId } });
+      }
+    });
+    unsubscribeProfiles.set(userId, unsub);
+    await store.dispatch('profile/fetchProfile', userId);
+  }
+};
+
+const getAuthorRole = (authorId) => {
+  if (!authorId) return 'New User';
+  const profile = store.getters['profile/getProfileByUserId'](authorId);
+  return profile.role || 'New User';
+};
+
 const sortedPosts = computed(() => {
   return [...posts.value].sort((a, b) => {
     const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return dateB - dateA; // Сортировка от последнего к первому
+    return dateB - dateA;
   });
 });
 
@@ -350,7 +355,6 @@ const incrementPostViews = async (postId) => {
     const postRefGlobal = dbRef(db, `posts/${postId}`);
     const postRefCategory = dbRef(db, `categories/${categoryId}/posts/${postId}`);
 
-    // Получаем текущее значение views
     const snapshot = await get(postRefCategory);
     if (!snapshot.exists()) throw new Error('Пост не найден');
 
@@ -358,12 +362,10 @@ const incrementPostViews = async (postId) => {
     const currentViews = postData.views || 0;
     const newViews = currentViews + 1;
 
-    // Обновляем в Firebase
     const updates = { views: newViews };
     await update(postRefGlobal, updates);
     await update(postRefCategory, updates);
 
-    // Обновляем локальное состояние
     const postIndex = posts.value.findIndex(p => p.id === postId);
     if (postIndex !== -1) {
       posts.value[postIndex] = {
@@ -372,7 +374,6 @@ const incrementPostViews = async (postId) => {
       };
     }
 
-    // Также обновляем в Vuex через dispatch
     await store.dispatch('posts/incrementViews', postId);
   } catch (error) {
     console.error('Ошибка при обновлении просмотров:', error);
