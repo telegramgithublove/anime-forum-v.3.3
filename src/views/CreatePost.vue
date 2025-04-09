@@ -440,6 +440,26 @@ const categoryId = computed(() => route.params.categoryId || '-default-category'
 // Список уникальных категорий
 const uniqueCategoryIds = ['-ON8y3Nme64DW77mgchz', '-ON8xyw9CeIJElmRkeJ3', '-ON8xsw1oul4hRx15VMS'];
 const isUniqueCategory = computed(() => uniqueCategoryIds.includes(categoryId.value));
+const userRole = computed(() => store.getters['profile/getRole'] || 'New User');
+
+const maxCharacters = computed(() => {
+  const baseLimit = 333; // Базовый лимит для "New User"
+  switch (userRole.value) {
+    case 'New User':
+      return baseLimit; // 333 символов
+    case 'User':
+      return baseLimit * 2; // 666 символов (в два раза больше)
+    case 'Moderator':
+    case 'Teacher':
+    case 'Administrator':
+      return 666; // Оставляем текущий лимит для остальных ролей
+    default:
+      return baseLimit; // На случай неизвестной роли
+  }
+});
+
+const remainingCharacters = computed(() => Math.max(0, maxCharacters.value - (postContent.value?.length || 0)));
+const remainingTitleCharacters = computed(() => Math.max(0, 33 - (postTitle.value?.length || 0)));
 
 // Определение refs для input'ов
 const imageInput = ref(null);
@@ -462,8 +482,6 @@ const showValidation = ref(false);
 const previewMode = ref(false);
 const editor = ref(null);
 
-const remainingCharacters = computed(() => Math.max(0, 333 - (postContent.value?.length || 0)));
-const remainingTitleCharacters = computed(() => Math.max(0, 33 - (postTitle.value?.length || 0)));
 
 const isFormValid = computed(() => {
   const titleValid = postTitle.value.trim().length > 0;

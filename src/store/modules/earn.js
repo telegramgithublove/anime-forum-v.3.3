@@ -25,7 +25,6 @@ export default {
     activateCard({ commit, state, dispatch }, card) {
       if (state.userBalance >= card.cost) {
         commit('DECREASE_BALANCE', card.cost);
-        alert(`Card ${card.title} successfully activated!`);
         dispatch('progress/updateRoleBasedOnCard', card.title, { root: true });
       } else {
         alert('Not enough Preycoin to activate!');

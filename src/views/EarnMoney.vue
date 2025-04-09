@@ -1,6 +1,5 @@
-<!-- EarnMoney.vue -->
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-800 to-blue-900 py-12 px-4">
+  <div class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-800 to-blue-900 py-12 px-4 relative">
     <h1 class="text-5xl font-bold text-white text-center mb-12 animate-pulse font-anime">
       Заработай Preycoins!
     </h1>
@@ -23,6 +22,7 @@
                 {{ benefit }}
               </li>
             </ul>
+
           </div>
 
           <div class="space-y-4">
@@ -31,13 +31,14 @@
             </p>
             <button 
               @click="activateCard(card)" 
-              :disabled="userBalance < card.requiredBalance"
+              :disabled="userBalance < card.requiredBalance || isActivating"
               class="w-full py-4 px-8 rounded-lg font-bold text-white text-lg transition-all duration-300 transform
                      disabled:opacity-50 disabled:cursor-not-allowed
                      bg-gradient-to-r from-pink-500 to-purple-600
                      hover:from-pink-600 hover:to-purple-700 hover:scale-105
-                     active:scale-95">
-              {{ userBalance >= card.requiredBalance ? 'Активировать' : 'Недостаточно Preycoins' }}
+                     active:scale-95"
+            >
+              {{ userBalance >= card.requiredBalance ? (isActivating ? 'Активация...' : 'Активировать') : 'Недостаточно Preycoins' }}
             </button>
           </div>
         </div>
@@ -46,7 +47,17 @@
       </div>
     </div>
 
-    <!-- Раздел правил с отступом снизу -->
+    <!-- Эффект подарка и конфетти -->
+    <transition name="gift">
+      <div v-if="showGift" class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div class="gift-box animate-gift">
+          <div class="gift-lid"></div>
+          <div class="gift-body"></div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- Раздел правил -->
     <div class="max-w-4xl mx-auto mt-16 mb-20 p-8 bg-gray-900/50 backdrop-blur-md rounded-xl shadow-2xl text-white">
       <h2 class="text-3xl font-bold text-center mb-6 font-anime text-yellow-400 animate-float">
         Как заработать Preycoins?
@@ -86,7 +97,7 @@
       </p>
     </div>
 
-    <!-- Новый раздел "Внимание!" в тонах проекта -->
+    <!-- Раздел "Внимание!" -->
     <div class="max-w-4xl mx-auto mb-12 p-8 bg-gradient-to-r from-purple-900 to-blue-900 rounded-xl shadow-xl text-white border border-white/20 hover:shadow-2xl transition-shadow duration-300">
       <h2 class="text-3xl font-bold text-center mb-4 font-anime text-yellow-400">
         Внимание!
@@ -101,10 +112,7 @@
     </div>
 
     <div class="fixed top-4 right-4 bg-gray-800/80 backdrop-blur-sm p-8 rounded-lg text-white">
-      Ваш баланс: <span class="text-yellow-400 font-bold">
-        <br>
-        {{ userBalance }}
-      </span> Preycoins
+      Ваш баланс: <span class="text-yellow-400 font-bold"><br>{{ userBalance }}</span> Preycoins
     </div>
   </div>
 </template>
@@ -117,25 +125,41 @@ import { UserIcon as user } from '@heroicons/vue/24/solid';
 import { ShieldCheckIcon as shieldCheck } from '@heroicons/vue/24/solid';
 import { BookOpenIcon as bookOpen } from '@heroicons/vue/24/solid';
 import { Cog8ToothIcon as cog8Tooth } from '@heroicons/vue/24/solid';
+import confetti from 'canvas-confetti';
 
-// Инициализация store
 const store = useStore();
-
-// Подключение геттера userBalance из earn.js
 const userBalance = computed(() => store.getters['earn/userBalance'] || 0);
+const showGift = ref(false);
+const isActivating = ref(false);
 
-// Функция активации карточки с обнулением баланса и статуса
-const activateCard = (card) => {
-  if (userBalance.value >= card.requiredBalance) {
-    store.dispatch('earn/activateCard', card).then(() => {
-      // Обнуляем баланс и сбрасываем статус до New User после активации
-      store.dispatch('earn/setBalance', 0); // Сбрасываем баланс
-      store.dispatch('progress/updateRoleAndNotify', 0); // Сбрасываем статус
+const activateCard = async (card) => {
+  if (userBalance.value < card.requiredBalance || isActivating.value) return;
+
+  isActivating.value = true;
+
+  if (card.title === 'User') {
+    showGift.value = true;
+    confetti({
+      particleCount: 150,
+      spread: 80,
+      origin: { y: 0.6 },
+      colors: ['#ff69b4', '#ffd700', '#8a2be2']
     });
+    setTimeout(() => { showGift.value = false; }, 2000);
+  }
+
+  try {
+    await store.dispatch('earn/activateCard', card);
+    await store.dispatch('earn/setBalance', 0);
+    const newRole = card.title === 'User' ? 'User' : 'New User';
+    await store.dispatch('profile/updateRole', { userId: store.state.auth.user.uid, role: newRole });
+  } catch (error) {
+    console.error('Ошибка активации карточки:', error);
+  } finally {
+    isActivating.value = false;
   }
 };
 
-// Данные карточек
 const cards = ref([
   {
     title: 'User',
@@ -146,8 +170,7 @@ const cards = ref([
       'Уникальный стикерпак с аниме-героями',
       'Доступ к уникальным категориям (20 Preycoins/пост)',
       'Обычные категории (10 Preycoins/пост)',
-      'Кол-во символов в вашем посте увеливается в двое'
-
+      'Количество символов в вашем посте увеличивается в два раза'
     ]
   },
   {
@@ -213,5 +236,54 @@ const cards = ref([
 
 .animate-float {
   animation: float 3s ease-in-out infinite;
+}
+
+.gift-box {
+  position: relative;
+  width: 150px;
+  height: 150px;
+}
+
+.gift-lid {
+  position: absolute;
+  width: 170px;
+  height: 40px;
+  background: #ff69b4;
+  top: -20px;
+  left: -10px;
+  border-radius: 10px;
+  animation: open-lid 1s ease forwards;
+}
+
+.gift-body {
+  width: 150px;
+  height: 120px;
+  background: #ffd700;
+  border-radius: 10px;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes open-lid {
+  0% { transform: translateY(0) rotateX(0deg); }
+  100% { transform: translateY(-100px) rotateX(45deg); }
+}
+
+.animate-gift {
+  animation: bounce 1s ease;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-20px); }
+}
+
+.gift-enter-active,
+.gift-leave-active {
+  transition: opacity 0.5s;
+}
+
+.gift-enter-from,
+.gift-leave-to {
+  opacity: 0;
 }
 </style>
